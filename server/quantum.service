@@ -1,0 +1,16 @@
+[Unit]
+Description=Omega Core Quantum Backend Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/omega-core-quantum
+ExecStart=/usr/bin/python3 -m uvicorn server:app --host 0.0.0.0 --port 3333 --workers 1
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
