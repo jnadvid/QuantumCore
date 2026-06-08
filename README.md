@@ -34,6 +34,24 @@ QC_USER=admin QC_PASSWORD=admin1234 python3 server.py
 
 ---
 
+## 🏢 Soluciones Empresariales (casos de uso reales)
+
+Suite de aplicaciones cuánticas listas para demostrar valor real por industria.
+Cada una se ejecuta desde el panel **Soluciones Empresariales** y muestra KPIs,
+gráficas y el resultado óptimo.
+
+| Solución | Industria | Tecnología | Qué resuelve |
+|----------|-----------|------------|--------------|
+| **Optimización de Cartera** | Finanzas | QAOA / QUBO (Markowitz) | Selecciona la cartera óptima maximizando rendimiento ajustado al riesgo |
+| **Optimización de Red (Max-Cut)** | Logística | QAOA | Particiona redes, rutas de reparto y telecomunicaciones |
+| **Clave Cuántica (BB84)** | Ciberseguridad | QKD | Genera claves inviolables y **detecta espías** por física cuántica |
+| **Claves Aleatorias (QRNG)** | Ciberseguridad | Colapso cuántico | Genera claves AES-256, contraseñas y tokens verdaderamente aleatorios |
+| **Simulación Molecular (VQE)** | Química / Farma | VQE | Calcula la energía del estado fundamental del H₂ (diseño de fármacos) |
+
+> Las soluciones usan algoritmos cuánticos correctos: el solver QAOA aplica la capa de
+> coste `e^{-iγC}` de forma exacta sobre el vector de estado, el VQE alcanza precisión
+> química (error < 1.6 mHa) y BB84 detecta intrusos cuando el QBER supera el 11 %.
+
 ## ✨ Novedades de esta versión
 
 ### Comportamiento de ordenador cuántico más realista

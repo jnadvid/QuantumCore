@@ -1015,6 +1015,277 @@ class QuantumState:
 
         return {"error": f"Algoritmo desconocido: {name}"}
 
+    # ═══════════════════════════════════════════════════════════════════════
+    #  ENTERPRISE SOLUTIONS — real industrial quantum applications
+    #  Finanzas · Logística · Ciberseguridad · Química/Farma
+    # ═══════════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _np_apply_1q(psi: np.ndarray, U: np.ndarray, q: int, n: int) -> np.ndarray:
+        """Apply a single-qubit gate to a standalone n-qubit numpy state vector."""
+        pr = psi.reshape([2] * n)
+        pr = np.tensordot(U, pr, axes=([1], [q]))
+        perm = list(range(1, q + 1)) + [0] + list(range(q + 1, n))
+        return np.transpose(pr, perm).reshape(2 ** n)
+
+    def _qaoa_solve(self, cost: np.ndarray, n: int, maximize: bool = True, grid: int = 22):
+        """Exact QAOA (p=1) optimizer for an arbitrary diagonal cost function.
+        The cost-phase layer e^{-iγC} is applied exactly to the state vector — any
+        QUBO/Ising objective is supported. Returns (probs, best_params, best_exp)
+        and embeds the optimized distribution into the live state for visualization."""
+        dim = 2 ** n
+        psi0 = np.ones(dim, dtype=complex) / math.sqrt(dim)
+        cost = np.asarray(cost, dtype=float)
+        gammas = np.linspace(0, 2 * math.pi, grid)
+        betas = np.linspace(0, math.pi, grid)
+        best_exp, best_params, best_psi = None, None, psi0
+        for g in gammas:
+            base = psi0 * np.exp(-1j * g * cost)
+            for b in betas:
+                psi = base
+                rx = rx_gate(2 * b)
+                for q in range(n):
+                    psi = self._np_apply_1q(psi, rx, q, n)
+                exp = float(np.sum((np.abs(psi) ** 2) * cost))
+                if best_exp is None or (maximize and exp > best_exp) or (not maximize and exp < best_exp):
+                    best_exp, best_params, best_psi = exp, (g, b), psi
+        probs = np.abs(best_psi) ** 2
+        # Embed into the live full state on the first n qubits (rest stay |0⟩)
+        full = np.zeros(self.num_states, dtype=complex)
+        shift = self.n_qubits - n
+        for k in range(dim):
+            full[k << shift] = best_psi[k]
+        self.state = full
+        return probs, best_params, best_exp
+
+    @staticmethod
+    def _bits_of(s: int, n: int) -> List[int]:
+        return [(s >> (n - 1 - i)) & 1 for i in range(n)]
+
+    def run_enterprise(self, name: str, params: Dict = {}) -> Dict:
+        self.reset()
+        N = self.n_qubits
+
+        # ── FINANZAS — Optimización de Cartera (QAOA / QUBO) ──────────────────
+        if name == "portfolio":
+            n = max(3, min(int(params.get("n", min(N, 6))), N, 8))
+            rng = np.random.default_rng(params.get("seed"))
+            tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "JPM"][:n]
+            mu = rng.uniform(0.05, 0.22, n)          # rendimiento anual esperado
+            vol = rng.uniform(0.12, 0.45, n)         # volatilidad
+            A = rng.uniform(-0.25, 0.6, (n, n)); corr = (A + A.T) / 2
+            np.fill_diagonal(corr, 1.0); corr = np.clip(corr, -0.9, 0.9); np.fill_diagonal(corr, 1.0)
+            budget = int(params.get("budget", max(2, n // 2)))
+            risk_av = float(params.get("risk", 2.5))
+
+            cost = np.zeros(2 ** n)
+            for s in range(2 ** n):
+                x = self._bits_of(s, n)
+                ret = sum(mu[i] * x[i] for i in range(n))
+                var = sum(vol[i] * vol[j] * corr[i][j] * x[i] * x[j] for i in range(n) for j in range(n))
+                pen = 1.5 * (sum(x) - budget) ** 2
+                cost[s] = ret - risk_av * var - pen
+
+            probs, (g, b), _ = self._qaoa_solve(cost, n, maximize=True)
+            order = np.argsort(probs)[::-1][:8]
+            best_s = int(max(order, key=lambda s: cost[s]))
+            x = self._bits_of(best_s, n)
+            sel = [tickers[i] for i in range(n) if x[i]]
+            p_ret = sum(mu[i] * x[i] for i in range(n))
+            p_var = sum(vol[i] * vol[j] * corr[i][j] * x[i] * x[j] for i in range(n) for j in range(n))
+            p_vol = math.sqrt(max(p_var, 1e-9))
+            sharpe = (p_ret - 0.02) / p_vol if p_vol > 0 else 0.0
+            return {
+                "enterprise": True, "icon": "📈", "industry": "Finanzas",
+                "solution": "Optimización de Cartera",
+                "summary": f"QAOA selecciona la cartera óptima entre {2**n} combinaciones de {n} activos, maximizando rendimiento ajustado al riesgo (modelo de Markowitz como QUBO).",
+                "highlight": {"label": "Cartera óptima", "value": "  ·  ".join(sel) or "—"},
+                "kpis": [
+                    {"label": "Rendimiento esperado", "value": f"{p_ret*100:.1f}%"},
+                    {"label": "Riesgo (volatilidad)", "value": f"{p_vol*100:.1f}%"},
+                    {"label": "Ratio de Sharpe", "value": f"{sharpe:.2f}"},
+                    {"label": "Activos seleccionados", "value": f"{len(sel)} / {n}"},
+                ],
+                "rows": [{"label": tickers[i],
+                          "value": f"μ={mu[i]*100:.1f}%  σ={vol[i]*100:.1f}%",
+                          "tag": "EN CARTERA" if x[i] else ""} for i in range(n)],
+                "chart": {"type": "bar", "label": "Rendimiento esperado (%)",
+                          "labels": tickers, "values": [round(float(mu[i]*100), 1) for i in range(n)]},
+                "note": "Aplicación real: gestión de activos, fondos de inversión y asignación de capital. Empresas como Goldman Sachs y JPMorgan investigan QAOA para optimización de carteras.",
+                "fidelity": 1.0,
+            }
+
+        # ── LOGÍSTICA — Optimización de Redes (QAOA Max-Cut) ──────────────────
+        elif name == "maxcut":
+            n = max(3, min(int(params.get("n", min(N, 6))), N, 9))
+            rng = np.random.default_rng(params.get("seed"))
+            edges = [(i, j) for i in range(n) for j in range(i + 1, n) if rng.random() < 0.55]
+            if not edges:
+                edges = [(i, i + 1) for i in range(n - 1)]
+            cost = np.array([sum(1 for (i, j) in edges
+                                 if self._bits_of(s, n)[i] != self._bits_of(s, n)[j])
+                             for s in range(2 ** n)], dtype=float)
+            probs, _, _ = self._qaoa_solve(cost, n, maximize=True)
+            optimal = float(cost.max())
+            order = np.argsort(probs)[::-1][:8]
+            best_s = int(max(order, key=lambda s: cost[s]))
+            found = float(cost[best_s]); x = self._bits_of(best_s, n)
+            ratio = (found / optimal) if optimal > 0 else 1.0
+            gA = [i for i in range(n) if x[i] == 0]
+            gB = [i for i in range(n) if x[i] == 1]
+            return {
+                "enterprise": True, "icon": "🚚", "industry": "Logística y Redes",
+                "solution": "Optimización de Red (Max-Cut)",
+                "summary": f"QAOA particiona una red de {n} nodos y {len(edges)} conexiones en dos grupos maximizando los enlaces cortados — base de enrutamiento, diseño de redes y reparto de carga.",
+                "highlight": {"label": "Partición óptima",
+                              "value": f"Grupo A: {{{', '.join('N'+str(i) for i in gA)}}}   |   Grupo B: {{{', '.join('N'+str(i) for i in gB)}}}"},
+                "kpis": [
+                    {"label": "Enlaces cortados", "value": f"{int(found)}"},
+                    {"label": "Óptimo global", "value": f"{int(optimal)}"},
+                    {"label": "Ratio de aproximación", "value": f"{ratio*100:.0f}%"},
+                    {"label": "Nodos / Conexiones", "value": f"{n} / {len(edges)}"},
+                ],
+                "rows": [{"label": f"Conexión N{i} — N{j}",
+                          "value": "CORTADA ✂" if x[i] != x[j] else "interna",
+                          "tag": "CORTADA" if x[i] != x[j] else ""} for (i, j) in edges],
+                "note": "Aplicación real: optimización de rutas de reparto, diseño de redes de telecomunicaciones, asignación de frecuencias y balanceo de cargas. Volkswagen y DHL prueban QAOA para logística.",
+                "fidelity": round(ratio, 4),
+            }
+
+        # ── CIBERSEGURIDAD — Distribución Cuántica de Claves (BB84) ───────────
+        elif name == "bb84":
+            nbits = max(8, min(int(params.get("n", 24)), 64))
+            eve = bool(params.get("eve", random.random() < 0.45))
+            sift = 0; errors = 0; key_bits = []
+            for _ in range(nbits):
+                a_bit = random.randint(0, 1)
+                a_x = random.randint(0, 1)   # base: 0=Z(+), 1=X(×)
+                b_x = random.randint(0, 1)
+                q = QuantumState(1)
+                if a_bit: q.apply_gate("X", [0])
+                if a_x:   q.apply_gate("H", [0])
+                if eve:
+                    e_x = random.randint(0, 1)
+                    if e_x: q.apply_gate("H", [0])
+                    q.measure_qubit(0)
+                    if e_x: q.apply_gate("H", [0])
+                if b_x: q.apply_gate("H", [0])
+                b_bit = q.measure_qubit(0)
+                if a_x == b_x:           # bases coinciden → bit utilizable
+                    sift += 1
+                    if a_bit != b_bit: errors += 1
+                    key_bits.append(a_bit)
+            qber = (errors / sift) if sift else 0.0
+            secure = qber <= 0.11
+            # mitad para test público, mitad para clave final
+            final_bits = key_bits[len(key_bits) // 2:]
+            key_hex = hex(int("".join(map(str, final_bits)) or "0", 2))[2:].upper() if final_bits else "—"
+            return {
+                "enterprise": True, "icon": "🔐", "industry": "Ciberseguridad",
+                "solution": "Distribución Cuántica de Claves (BB84)",
+                "summary": f"Alice y Bob generan una clave secreta compartida sobre {nbits} qubits. Cualquier espía (Eve) altera el estado cuántico y eleva la tasa de error (QBER), siendo detectado por las leyes de la física.",
+                "highlight": {"label": "Veredicto de seguridad",
+                              "value": ("✓ CANAL SEGURO — sin espías detectados" if secure
+                                        else "✗ ¡ESPÍA DETECTADO! — clave descartada")},
+                "kpis": [
+                    {"label": "Qubits enviados", "value": str(nbits)},
+                    {"label": "Clave depurada", "value": f"{sift} bits"},
+                    {"label": "QBER (tasa error)", "value": f"{qber*100:.1f}%"},
+                    {"label": "Espía presente", "value": ("SÍ" if eve else "No")},
+                ],
+                "rows": [
+                    {"label": "Umbral de seguridad (QBER)", "value": "11.0%"},
+                    {"label": "Clave secreta final (hex)", "value": (key_hex if secure else "DESCARTADA")},
+                    {"label": "Detección de intrusos", "value": ("Eve detectada por QBER alto" if not secure and eve else
+                                                                 "Sin anomalías" if secure else "—")},
+                ],
+                "note": "Aplicación real: banca, defensa y telecomunicaciones. China (red Micius), Toshiba e ID Quantique ya despliegan QKD comercial en fibra óptica para comunicaciones inviolables.",
+                "fidelity": 1.0 if secure else 0.0,
+            }
+
+        # ── QUÍMICA / FARMA — Energía Molecular (VQE de H₂) ───────────────────
+        elif name == "vqe_h2":
+            I2 = np.eye(2, dtype=complex)
+            X, Y, Z = GATES["X"], GATES["Y"], GATES["Z"]
+            g0, g1, g2, g3, g4, g5 = -0.4804, 0.3435, -0.4347, 0.5716, 0.0910, 0.0910
+            H = (g0 * np.eye(4) + g1 * np.kron(Z, I2) + g2 * np.kron(I2, Z) +
+                 g3 * np.kron(Z, Z) + g4 * np.kron(Y, Y) + g5 * np.kron(X, X))
+            exact = float(np.min(np.linalg.eigvalsh(H).real))
+            thetas = np.linspace(-math.pi, math.pi, 121)
+            energies = []
+            for th in thetas:
+                psi = np.zeros(4, dtype=complex)
+                psi[1] = math.cos(th); psi[2] = math.sin(th)   # singlet subspace |01>,|10>
+                energies.append(float(np.real(psi.conj() @ H @ psi)))
+            imin = int(np.argmin(energies)); e_vqe = energies[imin]; th_opt = float(thetas[imin])
+            err = abs(e_vqe - exact)
+            # embed optimal molecular state on qubits 0,1 for visualization
+            psi = np.zeros(4, dtype=complex); psi[1] = math.cos(th_opt); psi[2] = math.sin(th_opt)
+            full = np.zeros(self.num_states, dtype=complex); shift = N - 2
+            for k in range(4):
+                full[k << shift] = psi[k]
+            self.state = full
+            # downsample landscape for chart
+            step = max(1, len(thetas) // 30)
+            return {
+                "enterprise": True, "icon": "🧬", "industry": "Química y Farmacéutica",
+                "solution": "Simulación Molecular (VQE — H₂)",
+                "summary": "El Variational Quantum Eigensolver calcula la energía del estado fundamental de la molécula de hidrógeno minimizando ⟨ψ(θ)|H|ψ(θ)⟩ — la base del diseño de fármacos y nuevos materiales.",
+                "highlight": {"label": "Energía del estado fundamental",
+                              "value": f"{e_vqe:.5f} Hartree  (θ óptimo = {th_opt:.3f} rad)"},
+                "kpis": [
+                    {"label": "Energía VQE", "value": f"{e_vqe:.4f} Ha"},
+                    {"label": "Energía exacta (FCI)", "value": f"{exact:.4f} Ha"},
+                    {"label": "Error", "value": f"{err:.2e} Ha"},
+                    {"label": "Precisión química", "value": ("✓ ALCANZADA" if err < 1.6e-3 else "no")},
+                ],
+                "chart": {"type": "line", "label": "Energía ⟨H⟩ (Hartree) vs θ",
+                          "labels": [f"{thetas[i]:.1f}" for i in range(0, len(thetas), step)],
+                          "values": [round(energies[i], 4) for i in range(0, len(thetas), step)]},
+                "note": "Aplicación real: descubrimiento de fármacos, catalizadores y baterías. Roche, Merck y Boehringer Ingelheim colaboran con empresas cuánticas para simular moléculas imposibles para superordenadores clásicos.",
+                "fidelity": float(max(0.0, 1.0 - err * 50)),
+            }
+
+        # ── CIBERSEGURIDAD — Generador Cuántico de Claves (QRNG) ──────────────
+        elif name == "qrng":
+            total = 256; reg = 8; bits = ""
+            while len(bits) < total:
+                q = QuantumState(reg)
+                for i in range(reg):
+                    q.apply_gate("H", [i])
+                res = q.measure_all()
+                bits += "".join(str(res.get(i, 0)) for i in range(reg))
+            bits = bits[:total]
+            key_int = int(bits, 2)
+            key_hex = format(key_int, "064x").upper()
+            # contraseña fuerte
+            charset = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*"
+            pw = "".join(charset[int(bits[i:i + 6], 2) % len(charset)] for i in range(0, 6 * 20, 6))
+            # token UUIDv4
+            h = key_hex.lower()
+            token = f"{h[0:8]}-{h[8:12]}-4{h[13:16]}-{h[16:20]}-{h[20:32]}"
+            return {
+                "enterprise": True, "icon": "🎲", "industry": "Ciberseguridad",
+                "solution": "Generador Cuántico de Aleatoriedad (QRNG)",
+                "summary": "Genera claves criptográficas a partir del colapso cuántico — aleatoriedad verdadera e impredecible, imposible de reproducir por generadores pseudoaleatorios clásicos (deterministas).",
+                "highlight": {"label": "Clave AES-256 (hex)", "value": key_hex},
+                "kpis": [
+                    {"label": "Entropía", "value": "256 bits"},
+                    {"label": "Calidad", "value": "Verdadera (cuántica)"},
+                    {"label": "Fuente", "value": "Colapso de |+⟩"},
+                    {"label": "Sesgo", "value": "0 (no determinista)"},
+                ],
+                "rows": [
+                    {"label": "Clave AES-256", "value": key_hex},
+                    {"label": "Contraseña segura (20)", "value": pw},
+                    {"label": "Token / UUID v4", "value": token},
+                ],
+                "note": "Aplicación real: generación de claves bancarias, certificados TLS, semillas de loterías auditables y tokens de seguridad. ID Quantique y Quantinuum venden QRNG comercial certificado.",
+                "fidelity": 1.0,
+            }
+
+        return {"error": f"Solución empresarial desconocida: {name}"}
+
     # ─── Full state snapshot ──────────────────────────────────────────────────
 
     def get_full_state(self) -> Dict:

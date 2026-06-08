@@ -137,6 +137,13 @@
     <!-- SIDEBAR LEFT: Controls -->
     <aside class="sidebar-left">
 
+      <!-- Enterprise Solutions -->
+      <section class="panel panel-enterprise">
+        <h3 class="panel-title enterprise-title">Soluciones Empresariales</h3>
+        <div class="enterprise-sub">Casos de uso cuánticos reales por industria</div>
+        <div id="enterprise-list" class="enterprise-list"></div>
+      </section>
+
       <!-- Qubit Manager -->
       <section class="panel">
         <h3 class="panel-title">Registro de Qubits</h3>
@@ -317,6 +324,21 @@
         <button class="btn btn-ghost btn-sm" id="algo-result-close">✕</button>
       </div>
       <div id="algo-result-body" class="algo-result-body"></div>
+    </div>
+  </div>
+
+  <!-- ENTERPRISE SOLUTION RESULT MODAL -->
+  <div id="enterprise-overlay" class="modal-overlay hidden">
+    <div class="modal modal-enterprise">
+      <div class="ent-header">
+        <div class="ent-icon" id="ent-icon">⚡</div>
+        <div class="ent-titles">
+          <div class="ent-industry" id="ent-industry">Industria</div>
+          <div class="ent-name" id="ent-name">Solución</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="ent-close">✕</button>
+      </div>
+      <div class="ent-body" id="ent-body"></div>
     </div>
   </div>
 

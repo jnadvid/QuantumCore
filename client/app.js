@@ -571,6 +571,11 @@ function handleWsMessage(msg) {
     log(`▶ ${r.algorithm||msg.data.name}`,'algo');
     if(r.description) log('  '+r.description,'algo');
   }
+  else if (msg.type==='enterprise_run') {
+    showEnterpriseResult(msg.data.result);
+    const r=msg.data.result||{};
+    log(`⚡ ${r.solution||msg.data.name} [${r.industry||''}]`,'algo');
+  }
   else if (msg.type==='sample_result') { renderSampleHistogram(msg.data); }
   else if (msg.type==='noise_set') {
     const pct=(msg.data.level*100).toFixed(1);
@@ -1520,6 +1525,147 @@ async function runAlgorithm(algo) {
   } catch(e) { log('Error al ejecutar: ' + e.message, 'err'); }
 }
 
+// ─── Enterprise Solutions ─────────────────────────────────────────────────────
+
+let enterpriseSolutions = [];
+let entChart = null;
+
+function industryColor(industry) {
+  const s = (industry || '').toLowerCase();
+  if (s.includes('financ') || s.includes('finanz')) return { c: '#10b981', glow: 'rgba(16,185,129,0.14)' };
+  if (s.includes('logíst') || s.includes('logist') || s.includes('red')) return { c: '#00c8ff', glow: 'rgba(0,200,255,0.14)' };
+  if (s.includes('ciber') || s.includes('segur')) return { c: '#f59e0b', glow: 'rgba(245,158,11,0.14)' };
+  if (s.includes('quím') || s.includes('quim') || s.includes('farma')) return { c: '#a78bfa', glow: 'rgba(124,58,237,0.16)' };
+  return { c: '#00c8ff', glow: 'rgba(0,200,255,0.14)' };
+}
+
+function renderEnterprise() {
+  const list = document.getElementById('enterprise-list');
+  if (!list) return;
+  list.innerHTML = '';
+  enterpriseSolutions.forEach(sol => {
+    const col = industryColor(sol.industry);
+    const card = document.createElement('div');
+    card.className = 'ent-card';
+    card.style.setProperty('--ind-color', col.c);
+    card.innerHTML = `
+      <div class="ent-card-icon">${sol.icon || '⚡'}</div>
+      <div class="ent-card-text">
+        <span class="ent-card-industry">${escHtml(sol.industry)}</span>
+        <span class="ent-card-name">${escHtml(sol.label)}</span>
+        <span class="ent-card-desc">${escHtml(sol.description || '')}</span>
+      </div>
+      <span class="ent-card-go">›</span>`;
+    card.addEventListener('click', () => runEnterprise(sol));
+    list.appendChild(card);
+  });
+}
+
+async function runEnterprise(sol) {
+  log(`⚡ Ejecutando solución: ${sol.label} (${sol.industry})...`, 'algo');
+  try {
+    if (!sendWS({ cmd: 'enterprise', name: sol.name, params: {} })) {
+      const resp = await api('POST', '/api/enterprise', { name: sol.name, params: {} });
+      if (resp && resp.result) showEnterpriseResult(resp.result);
+    } else {
+      // WS path: result arrives via enterprise_run; fallback open after delay
+      setTimeout(async () => {
+        if (document.getElementById('enterprise-overlay').classList.contains('hidden')) {
+          try { const resp = await api('POST','/api/enterprise',{name:sol.name,params:{}}); showEnterpriseResult(resp.result); } catch(e){}
+        }
+      }, 400);
+    }
+  } catch (e) { log('Error en solución empresarial: ' + e.message, 'err'); }
+}
+
+function showEnterpriseResult(r) {
+  if (!r || r.error) { log('Error: ' + (r && r.error || 'desconocido'), 'err'); return; }
+  const col = industryColor(r.industry);
+  const modal = document.querySelector('.modal-enterprise');
+  modal.style.setProperty('--ind-color', col.c);
+  modal.style.setProperty('--ind-glow', col.glow);
+
+  document.getElementById('ent-icon').textContent = r.icon || '⚡';
+  document.getElementById('ent-industry').textContent = r.industry || '';
+  document.getElementById('ent-name').textContent = r.solution || '';
+
+  let html = '';
+  if (r.summary) html += `<div class="ent-summary">${escHtml(r.summary)}</div>`;
+
+  if (r.kpis && r.kpis.length) {
+    html += `<div class="ent-kpis">` + r.kpis.map(k => `
+      <div class="ent-kpi">
+        <span class="ent-kpi-label">${escHtml(k.label)}</span>
+        <span class="ent-kpi-value">${escHtml(String(k.value))}</span>
+      </div>`).join('') + `</div>`;
+  }
+
+  if (r.highlight) {
+    html += `<div class="ent-highlight">
+      <span class="ent-highlight-label">${escHtml(r.highlight.label)}</span>
+      <span class="ent-highlight-value">${escHtml(String(r.highlight.value))}</span>
+    </div>`;
+  }
+
+  const hasRows = r.rows && r.rows.length;
+  const hasChart = r.chart && r.chart.values && r.chart.values.length;
+  if (hasRows || hasChart) {
+    html += `<div class="ent-cols ${hasRows && hasChart ? '' : 'single'}">`;
+    if (hasRows) {
+      html += `<div><div class="ent-section-title">Detalle</div><div class="ent-rows">` +
+        r.rows.map(row => `<div class="ent-row">
+          <span class="ent-row-label">${escHtml(row.label)}</span>
+          ${row.tag ? `<span class="ent-row-tag">${escHtml(row.tag)}</span>` : ''}
+          <span class="ent-row-value">${escHtml(String(row.value))}</span>
+        </div>`).join('') + `</div></div>`;
+    }
+    if (hasChart) {
+      html += `<div><div class="ent-section-title">${escHtml(r.chart.label || 'Gráfica')}</div>
+        <div class="ent-chart-wrap"><canvas id="ent-chart-canvas"></canvas></div></div>`;
+    }
+    html += `</div>`;
+  }
+
+  if (r.note) html += `<div class="ent-note">${escHtml(r.note)}</div>`;
+
+  document.getElementById('ent-body').innerHTML = html;
+  document.getElementById('enterprise-overlay').classList.remove('hidden');
+
+  if (hasChart) {
+    const ctx = document.getElementById('ent-chart-canvas').getContext('2d');
+    if (entChart) { entChart.destroy(); entChart = null; }
+    const isLine = r.chart.type === 'line';
+    entChart = new Chart(ctx, {
+      type: isLine ? 'line' : 'bar',
+      data: {
+        labels: r.chart.labels,
+        datasets: [{
+          data: r.chart.values,
+          backgroundColor: isLine ? 'rgba(124,58,237,0.15)' : col.c + 'cc',
+          borderColor: col.c,
+          borderWidth: 2,
+          borderRadius: isLine ? 0 : 4,
+          pointRadius: isLine ? 0 : undefined,
+          tension: 0.35,
+          fill: isLine,
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: { duration: 500 },
+        plugins: { legend: { display: false },
+          tooltip: { backgroundColor: 'rgba(10,22,40,0.95)', borderColor: col.c, borderWidth: 1, titleColor: col.c, bodyColor: '#cbd5e1' } },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 8 }, maxRotation: 45 } },
+          y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 9 } } }
+        }
+      }
+    });
+  }
+}
+
+document.getElementById('ent-close').addEventListener('click', () => document.getElementById('enterprise-overlay').classList.add('hidden'));
+document.getElementById('enterprise-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden'); });
+
 // ─── Algorithm Builder ───────────────────────────────────────────────────────
 
 const BUILDER_GATES = ['H','X','Y','Z','S','T','RX','RY','RZ','CNOT','CZ','SWAP','ISWAP','CRY','RZZ','CCX','CSWAP'];
@@ -1809,6 +1955,11 @@ async function init() {
     algorithms = await apiFetch(API_BASE+'/api/algorithms').then(r=>r.json());
     renderAlgorithms();
     log(algorithms.length+' algoritmos disponibles','ok');
+  } catch(e) {}
+  try {
+    enterpriseSolutions = await apiFetch(API_BASE+'/api/enterprise/list').then(r=>r.json());
+    renderEnterprise();
+    log(enterpriseSolutions.length+' soluciones empresariales cargadas','ok');
   } catch(e) {}
   log('Conectando a '+WS_URL+'...','info');
   connectWS();

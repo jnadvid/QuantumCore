@@ -186,6 +186,10 @@ class QubitToggle(BaseModel):
     qubit: int
     enabled: bool
 
+class EnterpriseOp(BaseModel):
+    name: str
+    params: Optional[Dict[str, Any]] = {}
+
 class SampleRequest(BaseModel):
     shots: int = 1024
 
@@ -308,6 +312,29 @@ async def run_algorithm(op: AlgorithmOp, username: str = Depends(require_auth)):
         return {"success": True, "result": result, "state": state_snapshot}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/enterprise")
+async def run_enterprise(op: EnterpriseOp, username: str = Depends(require_auth)):
+    """Run a real-world enterprise quantum solution (finance, logistics, security, chemistry)."""
+    try:
+        result = qc.run_enterprise(op.name, op.params or {})
+        qc.last_algorithm_result = result
+        state_snapshot = qc.get_full_state()
+        await broadcast_state()
+        await broadcast_event("enterprise_run", {"name": op.name, "result": result, "state": state_snapshot})
+        return {"success": True, "result": result, "state": state_snapshot}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/enterprise/list")
+async def list_enterprise(username: str = Depends(require_auth)):
+    return [
+        {"name": "portfolio", "label": "Optimización de Cartera", "industry": "Finanzas",        "icon": "📈", "description": "Selección óptima de activos (QAOA)"},
+        {"name": "maxcut",    "label": "Optimización de Red",     "industry": "Logística",        "icon": "🚚", "description": "Particiona redes y rutas (Max-Cut)"},
+        {"name": "bb84",      "label": "Clave Cuántica (BB84)",   "industry": "Ciberseguridad",   "icon": "🔐", "description": "Comunicación inviolable + detección de espías"},
+        {"name": "qrng",      "label": "Claves Aleatorias (QRNG)","industry": "Ciberseguridad",   "icon": "🎲", "description": "Genera claves AES-256 verdaderamente aleatorias"},
+        {"name": "vqe_h2",    "label": "Simulación Molecular",    "industry": "Química / Farma",  "icon": "🧬", "description": "Energía molecular del H₂ (VQE)"},
+    ]
 
 @app.post("/api/qubits/add")
 async def add_qubit(username: str = Depends(require_auth)):
@@ -486,6 +513,14 @@ async def websocket_endpoint(websocket: WebSocket):
                         result = qc.measure_qubit(qubit)
                         await broadcast_state()
                         await broadcast_event("measured", {"qubit": qubit, "result": result})
+
+                elif cmd == "enterprise":
+                    name   = data.get("name")
+                    eparams = data.get("params", {})
+                    result = qc.run_enterprise(name, eparams)
+                    qc.last_algorithm_result = result
+                    await broadcast_state()
+                    await broadcast_event("enterprise_run", {"name": name, "result": result})
 
                 elif cmd == "sample":
                     shots = int(data.get("shots", 1024))
