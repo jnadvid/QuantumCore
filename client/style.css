@@ -1,25 +1,25 @@
 /* ─── OMEGA CORE QUANTUM — STYLESHEET v2 ───────────────────────────── */
 
 :root {
-  --bg:        #030712;
-  --bg2:       #050d1a;
-  --surface:   #0a1628;
-  --surface2:  #0f1f38;
-  --border:    rgba(0, 200, 255, 0.12);
-  --border2:   rgba(0, 200, 255, 0.22);
-  --accent:    #00c8ff;
-  --accent2:   #7c3aed;
-  --accent3:   #10b981;
-  --accent4:   #f59e0b;
-  --danger:    #ef4444;
-  --text:      #e2e8f0;
-  --text-dim:  #64748b;
-  --text-muted:#334155;
+  --bg:        #070b14;
+  --bg2:       #0b1120;
+  --surface:   #0e1626;
+  --surface2:  #18233a;
+  --border:    rgba(148, 163, 184, 0.12);
+  --border2:   rgba(148, 163, 184, 0.22);
+  --accent:    #38bdf8;
+  --accent2:   #818cf8;
+  --accent3:   #34d399;
+  --accent4:   #fbbf24;
+  --danger:    #f87171;
+  --text:      #e6edf6;
+  --text-dim:  #8b9bb4;
+  --text-muted:#5a6b85;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
   --font-ui:   'Syne', system-ui, sans-serif;
-  --radius:    6px;
-  --glow:      0 0 20px rgba(0,200,255,0.15), 0 0 40px rgba(0,200,255,0.07);
-  --glow2:     0 0 20px rgba(124,58,237,0.2);
+  --radius:    8px;
+  --glow:      0 0 18px rgba(56,189,248,0.10);
+  --glow2:     0 0 18px rgba(129,140,248,0.14);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -95,7 +95,7 @@ html, body {
 
 .layout {
   display: grid;
-  grid-template-columns: 255px 1fr 238px;
+  grid-template-columns: 290px 1fr 270px;
   height: calc(100vh - 47px);
   position: relative; z-index: 5;
   overflow: hidden;
@@ -525,11 +525,7 @@ html, body {
 .builder-step-del { margin-left: auto; cursor: pointer; color: var(--text-muted); font-size: 11px; }
 .builder-step-del:hover { color: var(--danger); }
 
-/* ─── SCANLINES ──────────────────────────────────────────────────────────── */
-body::after {
-  content: ''; position: fixed; inset: 0; z-index: 1; pointer-events: none;
-  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.02) 2px, rgba(0,0,0,0.02) 4px);
-}
+/* ─── SCANLINES (desactivado para un acabado sobrio) ─────────────────────── */
 
 /* ─── TOOLTIPS ───────────────────────────────────────────────────────────── */
 [data-tooltip] { position: relative; }
@@ -720,26 +716,15 @@ body::after {
    AESTHETIC UPGRADE v3 — richer depth, motion & new components
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/* Ambient aurora glow behind the whole app */
+/* Subtle, static ambient depth (no animation — serious look) */
 body::before {
   content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
   background:
-    radial-gradient(900px 500px at 12% -5%, rgba(0,200,255,0.10), transparent 60%),
-    radial-gradient(800px 520px at 95% 0%, rgba(124,58,237,0.12), transparent 60%),
-    radial-gradient(700px 600px at 50% 115%, rgba(16,185,129,0.06), transparent 60%);
-  animation: aurora 18s ease-in-out infinite alternate;
-}
-@keyframes aurora {
-  0%   { opacity: 0.8; transform: translateY(0) scale(1); }
-  100% { opacity: 1;   transform: translateY(-12px) scale(1.04); }
+    radial-gradient(1000px 560px at 15% -10%, rgba(56,189,248,0.05), transparent 62%),
+    radial-gradient(900px 560px at 100% 0%, rgba(99,102,241,0.05), transparent 62%);
 }
 
-/* Animated logo glow */
-.logo svg { animation: logo-spin 26s linear infinite; transform-origin: 50% 50%;
-  filter: drop-shadow(0 0 6px rgba(0,200,255,0.35)); }
-@keyframes logo-spin { to { transform: rotate(360deg); } }
-.logo-qs { background-size: 200% auto; animation: shimmer 6s linear infinite; }
-@keyframes shimmer { to { background-position: 200% center; } }
+.logo svg { transform-origin: 50% 50%; filter: drop-shadow(0 0 5px rgba(56,189,248,0.25)); }
 
 /* Header gradient underline */
 .header { box-shadow: 0 1px 0 rgba(0,200,255,0.06), 0 8px 30px rgba(0,0,0,0.35); }
@@ -758,17 +743,8 @@ body::before {
   -webkit-text-fill-color: transparent;
 }
 
-/* Buttons: subtle sheen sweep on hover */
-.btn { position: relative; overflow: hidden; }
-.btn::after {
-  content: ''; position: absolute; inset: 0;
-  background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.10) 50%, transparent 70%);
-  transform: translateX(-120%); transition: transform 0.5s;
-}
-.btn:hover::after { transform: translateX(120%); }
-
-/* Gate buttons glow on hover */
-.gate-btn:hover { box-shadow: 0 0 14px rgba(0,200,255,0.25), 0 4px 12px rgba(0,0,0,0.3); }
+/* Gate buttons: restrained hover */
+.gate-btn:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.35); }
 .gate-ISWAP, .gate-CRX, .gate-CRY, .gate-CRZ { border-color: rgba(16,185,129,0.4); color: #6ee7b7; }
 .gate-RXX, .gate-RYY, .gate-RZZ { border-color: rgba(245,158,11,0.4); color: #fcd34d; }
 .gate-CSWAP { border-color: rgba(239,68,68,0.5); color: #fca5a5; }
@@ -1115,3 +1091,169 @@ body::before {
 }
 .uf-solve:hover { transform: translateY(-1px); box-shadow: 0 8px 22px -8px var(--ind-color, var(--accent)); }
 .uf-solve:active { transform: scale(0.98); }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PROFESSIONAL REORGANIZATION v5 — sober, structured, serious
+   (appended last → authoritative)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Header: clean and restrained ─────────────────────────────────────────── */
+.header {
+  background: rgba(11,17,32,0.94);
+  border-bottom: 1px solid var(--border);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.02);
+  gap: 16px; padding: 9px 20px;
+}
+.logo-qs { background: none; -webkit-text-fill-color: var(--text); color: var(--text); font-weight: 800; }
+.logo-omega { color: var(--text-dim); }
+#norm-display, #qubit-count-header { color: var(--accent); text-shadow: none; }
+.header-status { font-size: 11px; gap: 12px; }
+.divider { opacity: 0.5; }
+
+/* ── Sidebars: clear vertical rhythm and separation ───────────────────────── */
+.sidebar-left, .sidebar-right {
+  background: rgba(8,12,22,0.82);
+  gap: 0;
+}
+.sidebar-left { border-right: 1px solid var(--border); }
+.sidebar-right { border-left: 1px solid var(--border); }
+
+/* ── Panels: consistent structure, calm surfaces ─────────────────────────── */
+.panel {
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  padding: 16px 16px 18px;
+}
+.panel::before { display: none; }   /* remove sweeping accent */
+.panel:hover { background: rgba(255,255,255,0.012); }
+
+/* Section titles: quiet uppercase label with a leading tick */
+.panel-title {
+  background: none !important; -webkit-text-fill-color: currentColor !important; color: var(--text) !important;
+  font-family: var(--font-ui); font-size: 11px; font-weight: 700;
+  letter-spacing: 0.16em; text-transform: uppercase;
+  display: flex; align-items: center; gap: 8px; margin-bottom: 12px;
+}
+.panel-title::before {
+  content: ''; width: 3px; height: 12px; border-radius: 2px;
+  background: var(--accent); flex-shrink: 0;
+}
+.panel-caption { font-size: 10px; color: var(--text-dim); margin: -6px 0 10px; }
+.panel-sub { font-size: 10px; color: var(--text-dim); }
+
+/* ── Use-case list (left) — clean rows ────────────────────────────────────── */
+.panel-enterprise { background: transparent; }
+.panel-enterprise::before { display: none; }
+.enterprise-title { background: none !important; -webkit-text-fill-color: currentColor !important; color: var(--text) !important; }
+.enterprise-list { gap: 7px; }
+.ent-card {
+  padding: 10px 12px; border-radius: 10px; gap: 11px;
+  background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+}
+.ent-card::before { width: 3px; opacity: 1; border-radius: 3px 0 0 3px; }
+.ent-card:hover {
+  transform: none; background: rgba(255,255,255,0.045);
+  border-color: var(--ind-color, var(--accent));
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+}
+.ent-card-icon {
+  width: 32px; height: 32px; border-radius: 8px; font-size: 14px; font-weight: 800;
+  font-family: var(--font-ui); color: var(--ind-color, var(--accent));
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border);
+}
+.ent-card-industry { font-size: 8px; opacity: 0.9; }
+.ent-card-name { font-size: 12px; }
+.ent-card-go { font-size: 16px; opacity: 0.4; }
+.ent-card:hover .ent-card-go { transform: none; opacity: 0.9; }
+
+/* ── Qubit register — tidy grid ───────────────────────────────────────────── */
+.qubit-controls { margin-bottom: 12px; }
+.qubit-badge { font-size: 18px; color: var(--text); }
+.qubit-grid { gap: 6px; max-height: 260px; }
+.qubit-cell {
+  background: rgba(255,255,255,0.02); border: 1px solid var(--border);
+  border-radius: 8px; min-height: 58px; gap: 3px;
+}
+.qubit-cell:hover { transform: none; border-color: var(--accent); box-shadow: 0 2px 10px rgba(0,0,0,0.35); }
+.qubit-hint { font-size: 8px; color: var(--text-muted); margin-top: 10px; line-height: 1.5; }
+
+/* ── Gate palette — aligned, calmer colors ────────────────────────────────── */
+.gate-section { margin-bottom: 12px; }
+.gate-section:last-child { margin-bottom: 0; }
+.gate-section-label { font-size: 8.5px; color: var(--text-muted); margin-bottom: 7px; }
+.gate-grid { gap: 5px; }
+.gate-btn {
+  min-width: 36px; padding: 6px 8px; border-radius: 6px;
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border2);
+  color: var(--text); font-size: 10px;
+}
+.gate-btn:hover { transform: none; border-color: var(--accent); color: var(--accent); }
+/* unify gate accent tints to a calm 2-color scheme */
+.gate-H, .gate-RX, .gate-RY, .gate-RZ, .gate-P, .gate-SX { color: #7dd3fc; border-color: rgba(56,189,248,0.30); }
+.gate-X, .gate-Y, .gate-Z, .gate-S, .gate-T, .gate-Sdg, .gate-Tdg { color: #c7d2fe; border-color: rgba(129,140,248,0.30); }
+.gate-CNOT, .gate-CZ, .gate-CY, .gate-CH, .gate-SWAP, .gate-ISWAP, .gate-CRX, .gate-CRY, .gate-CRZ,
+.gate-RXX, .gate-RYY, .gate-RZZ, .gate-CCX, .gate-CSWAP { color: #6ee7b7; border-color: rgba(52,211,153,0.28); }
+
+/* ── Algorithm list ───────────────────────────────────────────────────────── */
+.algo-btn { border-radius: 9px; padding: 9px 11px; background: rgba(255,255,255,0.02); }
+.algo-btn:hover { transform: none; border-color: var(--accent2); background: rgba(129,140,248,0.07); }
+
+/* ── Center hub — sober header ────────────────────────────────────────────── */
+.usecase-hub { background: rgba(12,18,33,0.5); padding: 18px 20px 20px; }
+.hub-banner { padding: 0 0 14px; margin-bottom: 16px; }
+.hub-title {
+  background: none; -webkit-text-fill-color: var(--text); color: var(--text);
+  font-size: 16px; font-weight: 800; letter-spacing: 0.01em;
+}
+.hub-sub { font-size: 11px; color: var(--text-dim); margin-top: 3px; }
+.hub-badge {
+  background: rgba(255,255,255,0.03); border: 1px solid var(--border); box-shadow: none;
+  color: var(--text-dim); font-weight: 600;
+}
+.hub-badge span { color: var(--accent); }
+
+.uc-card {
+  border-radius: 12px; padding: 15px 16px;
+  background: rgba(255,255,255,0.022); border: 1px solid var(--border);
+}
+.uc-card:hover {
+  transform: translateY(-2px); border-color: var(--ind-color, var(--accent));
+  box-shadow: 0 12px 30px -16px rgba(0,0,0,0.8);
+}
+.uc-card-mono { background: rgba(255,255,255,0.04); border-color: var(--border); }
+
+/* ── Visualization panels in the main area ────────────────────────────────── */
+.main-area { background: var(--bg); }
+.main-panel { background: rgba(12,18,33,0.4); }
+.panel-header { margin-bottom: 12px; }
+
+/* ── Right column: metrics ────────────────────────────────────────────────── */
+.metric-card { background: rgba(255,255,255,0.025); border-radius: 9px; }
+.metric-value { font-size: 16px; }
+
+/* ── Entanglement panel — clear & labeled ─────────────────────────────────── */
+#entanglement-canvas {
+  display: block; width: 100%; height: auto; border-radius: 8px;
+  border: 1px solid var(--border); background: #0a0f1c;
+}
+.ent-legend { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 9px; color: var(--text-dim); }
+.ent-legend-bar {
+  flex: 1; height: 7px; border-radius: 4px;
+  background: linear-gradient(90deg, #0a1f33, #38bdf8 55%, #818cf8);
+  border: 1px solid var(--border);
+}
+.ent-legend-note { font-size: 9px; color: var(--text-muted); margin-top: 6px; text-align: center; }
+
+/* ── Console ──────────────────────────────────────────────────────────────── */
+.console-log { max-height: 150px; }
+.log-msg.algo { color: #c7d2fe; }
+
+/* ── Buttons: flat, professional ──────────────────────────────────────────── */
+.btn { border-radius: 7px; }
+.btn-primary { background: rgba(56,189,248,0.12); border-color: var(--accent); color: var(--accent); }
+.btn-primary:hover { background: rgba(56,189,248,0.2); box-shadow: none; }
+
+/* ── Scrollbars ───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.18); border-radius: 6px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.32); }

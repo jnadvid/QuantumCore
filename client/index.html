@@ -140,7 +140,6 @@
       <!-- Use Cases -->
       <section class="panel panel-enterprise">
         <h3 class="panel-title enterprise-title">Casos de uso</h3>
-        <div class="enterprise-sub">Resuelve problemas reales con tus datos</div>
         <div id="enterprise-list" class="enterprise-list"></div>
       </section>
 
@@ -191,8 +190,8 @@
       <section class="panel usecase-hub" id="usecase-hub">
         <div class="hub-banner">
           <div class="hub-banner-text">
-            <h2 class="hub-title">Plataforma de Computación Cuántica</h2>
-            <p class="hub-sub">Introduce tus datos reales y resuelve problemas de tu empresa con qubits simulados — cálculos cuánticos reales, no maquetas.</p>
+            <h2 class="hub-title">Casos de uso</h2>
+            <p class="hub-sub">Selecciona un caso, introduce tus datos y ejecuta el cálculo.</p>
           </div>
           <div class="hub-badge"><span id="hub-qubits">—</span> qubits</div>
         </div>
@@ -303,7 +302,14 @@
 
       <section class="panel">
         <h3 class="panel-title">Entrelazamiento</h3>
-        <canvas id="entanglement-canvas" width="210" height="210"></canvas>
+        <div class="panel-caption">Información mutua entre qubits</div>
+        <canvas id="entanglement-canvas" width="240" height="240"></canvas>
+        <div class="ent-legend">
+          <span>0</span>
+          <div class="ent-legend-bar"></div>
+          <span>máx</span>
+        </div>
+        <div class="ent-legend-note" id="ent-legend-note">Sin correlaciones</div>
       </section>
 
       <section class="panel">

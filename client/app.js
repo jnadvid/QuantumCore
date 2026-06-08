@@ -1302,22 +1302,54 @@ function renderStatevector() {
 
 // ─── Entanglement ────────────────────────────────────────────────────────────
 
+function entColor(v) {
+  // v in [0,1]: dark → cyan (#38bdf8) → indigo (#818cf8)
+  const lerp = (a, b, t) => Math.round(a + (b - a) * t);
+  if (v < 0.5) {
+    const t = v / 0.5;
+    return `rgb(${lerp(10,56,t)},${lerp(31,189,t)},${lerp(51,248,t)})`;
+  }
+  const t = (v - 0.5) / 0.5;
+  return `rgb(${lerp(56,129,t)},${lerp(189,140,t)},${lerp(248,248,t)})`;
+}
+
 function renderEntanglement() {
   const canvas = document.getElementById('entanglement-canvas');
   const ctx = canvas.getContext('2d');
-  const emap = state.entanglement||[]; const n=emap.length; if(!n) return;
-  const W=canvas.width, H=canvas.height, cell=W/n;
-  ctx.fillStyle='#030712'; ctx.fillRect(0,0,W,H);
-  for(let i=0;i<n;i++){for(let j=0;j<n;j++){
-    const v=emap[i][j]||0;
-    if(i===j){ctx.fillStyle=`rgba(0,200,255,0.12)`;}
-    else{const r=Math.round(124*v),g=Math.round(58*v+(200*(1-v))),b=Math.round(237*v+(255*(1-v)));ctx.fillStyle=`rgba(${r},${g},${b},${Math.max(v,0.04)})`;}
-    ctx.fillRect(j*cell,i*cell,cell,cell);
-  }}
-  ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=0.5;
-  for(let i=0;i<=n;i++){ctx.beginPath();ctx.moveTo(i*cell,0);ctx.lineTo(i*cell,H);ctx.stroke();ctx.beginPath();ctx.moveTo(0,i*cell);ctx.lineTo(W,i*cell);ctx.stroke();}
-  ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font=`${Math.max(8,cell*0.48)}px JetBrains Mono`; ctx.textAlign='center';
-  for(let i=0;i<n;i++){ctx.fillText(i,i*cell+cell/2,H-3);ctx.fillText(i,5,i*cell+cell/2+3);}
+  const emap = state.entanglement || []; const n = emap.length;
+  const note = document.getElementById('ent-legend-note');
+  const W = canvas.width, H = canvas.height;
+  ctx.fillStyle = '#0a0f1c'; ctx.fillRect(0, 0, W, H);
+  if (!n) { if (note) note.textContent = '—'; return; }
+  const pad = 16;                         // espacio para etiquetas
+  const grid = W - pad, cell = grid / n;
+  let maxV = 0, maxPair = null;
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const x = pad + j * cell, y = i * cell;
+      if (i === j) {
+        ctx.fillStyle = 'rgba(148,163,184,0.10)';
+      } else {
+        const v = emap[i][j] || 0;
+        ctx.fillStyle = entColor(v);
+        if (i < j && v > maxV) { maxV = v; maxPair = [i, j]; }
+      }
+      ctx.fillRect(x + 1, y + 1, cell - 2, cell - 2);
+    }
+  }
+  // etiquetas de ejes
+  ctx.fillStyle = 'rgba(230,237,246,0.45)';
+  ctx.font = `${Math.max(7, Math.min(cell * 0.42, 10))}px JetBrains Mono`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  for (let i = 0; i < n; i++) {
+    ctx.fillText(i, pad + i * cell + cell / 2, H - 7);   // eje X (abajo)
+    ctx.fillText(i, 7, i * cell + cell / 2);             // eje Y (izquierda)
+  }
+  if (note) {
+    note.textContent = maxV > 0.02 && maxPair
+      ? `Máximo: q${maxPair[0]}–q${maxPair[1]} (${maxV.toFixed(2)})`
+      : 'Sin correlaciones (estado producto)';
+  }
 }
 
 // ─── Circuit ─────────────────────────────────────────────────────────────────
