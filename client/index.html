@@ -83,6 +83,9 @@
 
       <!-- Server info -->
       <div id="login-server-info" style="margin-top:1.5rem;font-size:.68rem;color:rgba(255,255,255,0.25);text-align:center"></div>
+      <div style="margin-top:.5rem;font-size:.66rem;color:rgba(0,200,255,0.35);text-align:center;letter-spacing:.04em">
+        Acceso por defecto &mdash; usuario <b style="color:rgba(0,200,255,0.6)">admin</b> &nbsp;·&nbsp; contraseña <b style="color:rgba(0,200,255,0.6)">admin1234</b>
+      </div>
     </div>
   </div>
   <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -123,6 +126,8 @@
       <span id="ram-info-display" style="color:var(--accent3);font-size:10px">RAM: detectando...</span>
     </div>
     <div class="header-actions">
+      <button class="btn btn-ghost" id="btn-qasm" title="Exportar circuito a OpenQASM 2.0">⤓ QASM</button>
+      <button class="btn btn-ghost" id="btn-sample" title="Muestrear distribución (shots)">⇶ Muestreo</button>
       <button class="btn btn-ghost" id="btn-reset" title="Reset al estado |0...0⟩">↺ Reset</button>
       <button class="btn btn-warning" id="btn-measure-all">⊗ Medir Todo</button>
     </div>
@@ -131,6 +136,12 @@
   <div class="layout">
     <!-- SIDEBAR LEFT: Controls -->
     <aside class="sidebar-left">
+
+      <!-- Use Cases -->
+      <section class="panel panel-enterprise">
+        <h3 class="panel-title enterprise-title">Casos de uso</h3>
+        <div id="enterprise-list" class="enterprise-list"></div>
+      </section>
 
       <!-- Qubit Manager -->
       <section class="panel">
@@ -217,18 +228,33 @@
         </div>
       </section>
 
-      <!-- Bloch Sphere Panel — ALL qubits -->
-      <section class="panel main-panel">
+      <!-- Bloch Sphere Panel — ALL qubits (centerpiece) -->
+      <section class="panel main-panel bloch-panel">
         <div class="panel-header">
-          <h3 class="panel-title">Esferas de Bloch — Todos los Qubits</h3>
+          <h3 class="panel-title">Esferas de Bloch</h3>
           <div class="bloch-controls">
-            <button class="btn btn-sm btn-ghost" id="bloch-size-toggle" title="Cambiar tamaño">⊞ Compacto</button>
-            <span class="panel-sub" id="bloch-sub">mostrando <span id="bloch-count">0</span> qubits</span>
+            <button class="btn btn-sm btn-ghost" id="bloch-spin" title="Activar/parar rotación">◓ Girar</button>
+            <button class="btn btn-sm btn-ghost" id="bloch-size-down" title="Reducir">−</button>
+            <button class="btn btn-sm btn-ghost" id="bloch-size-up" title="Ampliar">+</button>
+            <span class="panel-sub" id="bloch-sub"><span id="bloch-count">0</span> qubits</span>
           </div>
         </div>
+        <div class="panel-caption">Arrastra con el ratón para rotar las esferas en 3D</div>
         <div id="bloch-scroll" class="bloch-scroll">
           <div id="bloch-grid" class="bloch-grid"></div>
         </div>
+      </section>
+
+      <!-- Quantum Circuit Diagram -->
+      <section class="panel main-panel">
+        <div class="panel-header">
+          <h3 class="panel-title">Circuito Cuántico</h3>
+          <div class="bloch-controls">
+            <button class="btn btn-sm btn-ghost" id="btn-pennylane" title="Reconstruye el circuito con la librería PennyLane de Python y verifica el resultado">Ver en PennyLane</button>
+            <button class="btn btn-sm btn-ghost" id="btn-clear-circuit">Limpiar</button>
+          </div>
+        </div>
+        <div id="circuit-diagram" class="circuit-diagram"></div>
       </section>
 
       <!-- Probability Chart -->
@@ -242,19 +268,28 @@
         </div>
       </section>
 
-      <!-- Circuit Log -->
-      <section class="panel main-panel">
-        <div class="panel-header">
-          <h3 class="panel-title">Circuito Cuántico</h3>
-          <button class="btn btn-sm btn-ghost" id="btn-clear-circuit">Limpiar</button>
-        </div>
-        <div id="circuit-display" class="circuit-display"></div>
-      </section>
-
     </main>
 
     <!-- SIDEBAR RIGHT -->
     <aside class="sidebar-right">
+      <section class="panel">
+        <h3 class="panel-title">Recursos · RAM → qubits</h3>
+        <div id="resources" class="resources"></div>
+      </section>
+
+      <section class="panel">
+        <h3 class="panel-title">Métricas Cuánticas</h3>
+        <div id="metrics-grid" class="metrics-grid"></div>
+        <div class="noise-control">
+          <div class="noise-head">
+            <span class="noise-label">Ruido del dispositivo</span>
+            <span id="noise-value" class="noise-value">0.0%</span>
+          </div>
+          <input type="range" id="noise-slider" class="noise-slider" min="0" max="20" step="0.5" value="0" />
+          <div class="noise-hint">0% = ideal &nbsp;·&nbsp; &gt;0% = dispositivo NISQ ruidoso</div>
+        </div>
+      </section>
+
       <section class="panel">
         <h3 class="panel-title">Vector de Estado</h3>
         <div class="state-filter">
@@ -265,7 +300,14 @@
 
       <section class="panel">
         <h3 class="panel-title">Entrelazamiento</h3>
-        <canvas id="entanglement-canvas" width="210" height="210"></canvas>
+        <div class="panel-caption">Información mutua entre qubits</div>
+        <canvas id="entanglement-canvas" width="240" height="240"></canvas>
+        <div class="ent-legend">
+          <span>0</span>
+          <div class="ent-legend-bar"></div>
+          <span>máx</span>
+        </div>
+        <div class="ent-legend-note" id="ent-legend-note">Sin correlaciones</div>
       </section>
 
       <section class="panel">
@@ -299,6 +341,97 @@
         <button class="btn btn-ghost btn-sm" id="algo-result-close">✕</button>
       </div>
       <div id="algo-result-body" class="algo-result-body"></div>
+    </div>
+  </div>
+
+  <!-- USE-CASE INPUT FORM MODAL -->
+  <div id="usecase-form-overlay" class="modal-overlay hidden">
+    <div class="modal modal-enterprise" id="usecase-form-modal">
+      <div id="usecase-form"></div>
+    </div>
+  </div>
+
+  <!-- PENNYLANE CIRCUIT MODAL -->
+  <div id="pennylane-overlay" class="modal-overlay hidden">
+    <div class="modal modal-algo-result">
+      <div class="modal-title algo-result-title">
+        <span style="color:var(--accent2)">⎯</span>
+        <div>
+          <div>Circuito en PennyLane</div>
+          <div id="pennylane-sub" style="font-size:11px;color:var(--text-dim);font-weight:400"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="pennylane-close">✕</button>
+      </div>
+      <div class="algo-result-body">
+        <div style="font-size:11px;color:var(--text-dim);line-height:1.6;margin-bottom:10px">
+          El circuito que has construido se reconstruye con la <b style="color:var(--accent2)">librería PennyLane de Python</b>
+          (estándar de la industria para computación cuántica) en el servidor, se dibuja y se verifica que produce
+          exactamente el mismo estado que nuestro motor.
+        </div>
+        <pre id="pennylane-code" class="qasm-code"></pre>
+      </div>
+    </div>
+  </div>
+
+  <!-- ENTERPRISE SOLUTION RESULT MODAL -->
+  <div id="enterprise-overlay" class="modal-overlay hidden">
+    <div class="modal modal-enterprise">
+      <div class="ent-header">
+        <div class="ent-icon" id="ent-icon">·</div>
+        <div class="ent-titles">
+          <div class="ent-industry" id="ent-industry">Industria</div>
+          <div class="ent-name" id="ent-name">Solución</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="ent-close">✕</button>
+      </div>
+      <div class="ent-body" id="ent-body"></div>
+    </div>
+  </div>
+
+  <!-- SAMPLE / HISTOGRAM MODAL -->
+  <div id="sample-overlay" class="modal-overlay hidden">
+    <div class="modal modal-algo-result">
+      <div class="modal-title algo-result-title">
+        <span style="color:var(--accent4)">⇶</span>
+        <div>
+          <div>Muestreo Cuántico — Histograma de Mediciones</div>
+          <div id="sample-subheading" style="font-size:11px;color:var(--text-dim);font-weight:400"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="sample-close">✕</button>
+      </div>
+      <div class="sample-controls">
+        <label class="modal-label">Shots:</label>
+        <select id="sample-shots" class="modal-input" style="width:120px">
+          <option value="256">256</option>
+          <option value="1024" selected>1024</option>
+          <option value="4096">4096</option>
+          <option value="8192">8192</option>
+          <option value="16384">16384</option>
+        </select>
+        <button class="btn btn-primary btn-sm" id="sample-run">▶ Ejecutar muestreo</button>
+      </div>
+      <div class="algo-result-body" id="sample-body"></div>
+    </div>
+  </div>
+
+  <!-- QASM EXPORT MODAL -->
+  <div id="qasm-overlay" class="modal-overlay hidden">
+    <div class="modal modal-algo-result">
+      <div class="modal-title algo-result-title">
+        <span style="color:var(--accent3)">⤓</span>
+        <div>
+          <div>Exportar Circuito — OpenQASM 2.0</div>
+          <div id="qasm-subheading" style="font-size:11px;color:var(--text-dim);font-weight:400">Compatible con Qiskit y hardware real</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="qasm-close">✕</button>
+      </div>
+      <div class="algo-result-body">
+        <pre id="qasm-code" class="qasm-code"></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="qasm-copy">⧉ Copiar</button>
+        <button class="btn btn-primary" id="qasm-download">⤓ Descargar .qasm</button>
+      </div>
     </div>
   </div>
 

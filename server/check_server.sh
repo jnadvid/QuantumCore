@@ -45,7 +45,7 @@ echo "[4] Test HTTP local (curl al backend):"
 response=$(curl -s -o /tmp/qc_probe.txt -w "%{http_code}" http://127.0.0.1:3333/auth/login \
     -X POST \
     -H "Content-Type: application/json" \
-    -d '{"username":"admin","password":"quantum2024!"}' \
+    -d '{"username":"admin","password":"admin1234"}' \
     --max-time 5 2>/dev/null)
 if [ "$response" = "200" ]; then
     echo "    ✅ Login funciona (HTTP 200)"
