@@ -1,7 +1,5 @@
 @echo off
-setlocal enabledelayedexpansion
 title Omega Core Quantum - Instalador
-chcp 65001 >/dev/null
 cd /d "%~dp0"
 
 echo ==================================================
@@ -9,25 +7,23 @@ echo    OMEGA CORE QUANTUM  -  Instalador para Windows
 echo ==================================================
 echo.
 
-REM ---- 1. Detectar Python ----------------------------------------------
+REM ---- 1. Detectar Python (probando los comandos reales) ----------------
 set "PY="
-where python >/dev/null 2>&1 && set "PY=python"
-if not defined PY ( where py >/dev/null 2>&1 && set "PY=py -3" )
+python --version >nul 2>&1 && set "PY=python"
+if not defined PY ( py -3 --version >nul 2>&1 && set "PY=py -3" )
+if not defined PY ( python3 --version >nul 2>&1 && set "PY=python3" )
 
 if not defined PY (
-  echo [!] Python no esta instalado. Intentando instalarlo con winget...
-  winget install -e --id Python.Python.3.12 --accept-source-agreements --accept-package-agreements
-  if errorlevel 1 (
-    echo.
-    echo [X] No se pudo instalar Python automaticamente.
-    echo     Descargalo manualmente desde: https://www.python.org/downloads/
-    echo     IMPORTANTE: marca la casilla "Add Python to PATH" durante la instalacion.
-    echo     Despues vuelve a ejecutar este instalador.
-    echo.
-    pause
-    exit /b 1
-  )
-  set "PY=python"
+  echo [X] No se ha detectado Python en el PATH.
+  echo.
+  echo     Si ya tienes Python instalado, abre una NUEVA ventana de cmd
+  echo     o reinicia el equipo para que se actualice el PATH.
+  echo.
+  echo     Si no lo tienes, descargalo desde https://www.python.org/downloads/
+  echo     y marca la casilla "Add Python to PATH" al instalar.
+  echo.
+  pause
+  exit /b 1
 )
 
 echo [*] Python detectado:
@@ -35,22 +31,25 @@ echo [*] Python detectado:
 echo.
 
 REM ---- 2. Crear entorno virtual ----------------------------------------
-cd /d "%~dp0server"
+cd /d "%~dp0"
+cd server
 if not exist ".venv\Scripts\python.exe" (
   echo [*] Creando entorno virtual aislado...
   %PY% -m venv .venv
-  if errorlevel 1 (
-    echo [X] No se pudo crear el entorno virtual.
-    pause
-    exit /b 1
-  )
 )
 
-set "VENV_PY=.venv\Scripts\python.exe"
+if not exist ".venv\Scripts\python.exe" (
+  echo [X] No se pudo crear el entorno virtual con %PY%.
+  echo     Comprueba que tu instalacion de Python incluye el modulo venv.
+  pause
+  exit /b 1
+)
+
+set "VENV_PY=%~dp0server\.venv\Scripts\python.exe"
 
 REM ---- 3. Instalar dependencias ---------------------------------------
-echo [*] Actualizando pip e instalando dependencias (numpy, fastapi, uvicorn, ...)...
-"%VENV_PY%" -m pip install --upgrade pip >/dev/null 2>&1
+echo [*] Actualizando pip e instalando dependencias...
+"%VENV_PY%" -m pip install --upgrade pip
 "%VENV_PY%" -m pip install -r requirements.txt
 if errorlevel 1 (
   echo [X] Fallo al instalar las dependencias. Revisa tu conexion a internet.
@@ -68,18 +67,20 @@ echo     Contrasena  : admin1234
 echo ==================================================
 echo.
 
-REM ---- 4. Arrancar el servidor cuantico --------------------------------
-echo [*] Iniciando el servidor cuantico en http://127.0.0.1:3333 ...
-start "Omega Core Quantum - Servidor" cmd /k "cd /d "%~dp0server" && set QC_USER=admin&& set QC_PASSWORD=admin1234&& set QC_JWT_SECRET=omega-core-quantum-local-secret&& .venv\Scripts\python.exe server.py"
+REM ---- 4. Configurar credenciales (heredadas por el servidor) ----------
+set "QC_USER=admin"
+set "QC_PASSWORD=admin1234"
+set "QC_JWT_SECRET=omega-core-quantum-local-secret"
 
-REM ---- 5. Abrir el cliente en el navegador -----------------------------
+REM ---- 5. Abrir la interfaz y arrancar el servidor ---------------------
 echo [*] Abriendo la interfaz en el navegador...
-timeout /t 5 /nobreak >/dev/null
 start "" "%~dp0client\index.html"
 
 echo.
-echo  - Si el navegador no se abre solo, abre el archivo: client\index.html
-echo  - Para volver a iniciar mas tarde, ejecuta: start_windows.bat
-echo  - Para detener el servidor, cierra la ventana "Omega Core Quantum - Servidor".
+echo [*] Servidor iniciando en http://127.0.0.1:3333
+echo     Manten esta ventana abierta. Pulsa Ctrl+C para detener el servidor.
+echo     Para volver a iniciar en el futuro usa: start_windows.bat
 echo.
+"%VENV_PY%" server.py
+
 pause
