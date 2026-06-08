@@ -396,6 +396,24 @@ P(0) = (1+|<A|B>|²)/2`,
       { label: 'Ventaja', val: 'O(1) vs O(2ⁿ) clásico' },
     ],
     note: 'Construye kernels cuánticos para Support Vector Machines y redes neuronales cuánticas'
+  },
+
+  w_state: {
+    icon: 'W',
+    category: 'Entrelazamiento Multipartito',
+    what: 'El <strong>Estado W</strong> es una superposición simétrica de todas las configuraciones con exactamente un qubit en |1⟩: (|10…0⟩+|01…0⟩+…+|0…01⟩)/√n. A diferencia del GHZ, su entrelazamiento es <strong>robusto</strong>: medir o perder un qubit deja a los demás aún entrelazados.',
+    how: 'Se siembra una excitación en q₀ con una puerta X y se propaga por la cadena mediante rotaciones Y controladas CRY(θᵢ), con θᵢ = 2·arccos(√(1/(n−i))), seguidas de CNOT que reparten la amplitud equitativamente entre todos los qubits.',
+    circuit: `q₀: [X]─●──────────────
+q₁: ────CRY─⊕─●─────────
+q₂: ──────────CRY─⊕─────
+        (cadena × n−1)`,
+    apps: ['Redes cuánticas tolerantes a pérdidas', 'Memoria cuántica distribuida', 'Protocolos de anonimato cuántico', 'Metrología robusta'],
+    complexity: [
+      { label: 'Puertas', val: '2(n−1)+1' },
+      { label: 'Qubits', val: 'n ≥ 2' },
+      { label: 'Robustez', val: 'Sobrevive a 1 pérdida' },
+    ],
+    note: 'Clase de entrelazamiento distinta al GHZ — no convertibles entre sí por LOCC'
   }
 };
 
@@ -553,6 +571,11 @@ function handleWsMessage(msg) {
     log(`▶ ${r.algorithm||msg.data.name}`,'algo');
     if(r.description) log('  '+r.description,'algo');
   }
+  else if (msg.type==='sample_result') { renderSampleHistogram(msg.data); }
+  else if (msg.type==='noise_set') {
+    const pct=(msg.data.level*100).toFixed(1);
+    log(`Ruido del dispositivo → ${pct}%`, msg.data.level>0?'algo':'info');
+  }
   else if (msg.type==='qubit_added') log(`Qubit añadido → total: ${msg.data.n_qubits}`,'ok');
   else if (msg.type==='qubit_removed') log(`Qubit eliminado → total: ${msg.data.n_qubits}`,'ok');
   else if (msg.type==='reset') { log('Reset → |0...0⟩','info'); selectedQubits=[]; }
@@ -609,7 +632,7 @@ function showAlgorithmResult(r, algoName, stateData) {
   const ALGO_ICONS = {
     bell_state:'Φ⁺', ghz:'GHZ', qft:'QFT', grover:'⊗G',
     quantum_teleportation:'⟳ψ', bernstein_vazirani:'BV', deutsch:'D-J', random:'∞',
-    shor:'℘', simon:'Σs', phase_estimation:'Φe', swap_test:'|⟩⟨|'
+    shor:'℘', simon:'Σs', phase_estimation:'Φe', swap_test:'|⟩⟨|', w_state:'W'
   };
   const icon = ALGO_ICONS[algoName] || 'Ω';
 
@@ -893,6 +916,46 @@ function renderAll() {
   renderStatevector();
   renderEntanglement();
   renderCircuit();
+  renderMetrics();
+}
+
+// ─── Quantum Metrics ──────────────────────────────────────────────────────────
+
+function renderMetrics() {
+  const grid = document.getElementById('metrics-grid');
+  if (!grid) return;
+  const m = state.metrics;
+  if (!m) { grid.innerHTML = '<div style="font-size:9px;color:var(--text-muted)">—</div>'; return; }
+  const entPct  = Math.round((m.avg_entanglement || 0) * 100);
+  const shaMax  = m.max_shannon || (state.n_qubits || 1);
+  const shaPct  = Math.round(((m.shannon_entropy || 0) / Math.max(shaMax, 1)) * 100);
+  grid.innerHTML = `
+    <div class="metric-card">
+      <span class="metric-label">Entropía Shannon</span>
+      <span class="metric-value">${(m.shannon_entropy ?? 0).toFixed(2)}<span style="font-size:9px;color:var(--text-muted)"> /${shaMax} bits</span></span>
+      <div class="metric-bar"><div style="width:${shaPct}%;background:linear-gradient(90deg,var(--accent),var(--accent2))"></div></div>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">Entrelazamiento</span>
+      <span class="metric-value purple">${(m.avg_entanglement ?? 0).toFixed(3)}<span style="font-size:9px;color:var(--text-muted)"> ebit</span></span>
+      <div class="metric-bar"><div style="width:${entPct}%;background:linear-gradient(90deg,var(--accent2),var(--accent))"></div></div>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">Estados activos</span>
+      <span class="metric-value green">${(m.superposition_states ?? 0).toLocaleString()}</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">Part. ratio</span>
+      <span class="metric-value gold">${(m.participation_ratio ?? 0).toFixed(1)}</span>
+    </div>`;
+  // Keep slider/value in sync with server-side noise
+  const nv = document.getElementById('noise-value');
+  const ns = document.getElementById('noise-slider');
+  if (nv && ns && document.activeElement !== ns) {
+    const pct = (m.noise ?? 0) * 100;
+    nv.textContent = pct.toFixed(1) + '%';
+    ns.value = pct;
+  }
 }
 
 function renderHeader() {
@@ -1344,7 +1407,7 @@ function renderAlgorithms() {
   const icons = {
     bell_state:'Φ⁺', ghz:'GHZ', qft:'QFT', grover:'⊗G',
     quantum_teleportation:'⇌ψ', bernstein_vazirani:'BV', deutsch:'D-J', random:'∞',
-    shor:'℘', simon:'Σs', phase_estimation:'Φe', swap_test:'|⟩⟨|'
+    shor:'℘', simon:'Σs', phase_estimation:'Φe', swap_test:'|⟩⟨|', w_state:'W'
   };
   algorithms.forEach(algo=>{
     const btn=document.createElement('button');
@@ -1407,6 +1470,9 @@ async function runAlgorithm(algo) {
     if(algo.name === 'ghz') {
       params.n = n;  // use ALL qubits
     }
+    if(algo.name === 'w_state') {
+      params.n = Math.min(n, 10);  // W state up to 10 qubits
+    }
     if(algo.name === 'qft') {
       params.n = Math.min(n, 8);  // QFT up to 8 qubits (2^8=256 states, fast)
     }
@@ -1456,7 +1522,7 @@ async function runAlgorithm(algo) {
 
 // ─── Algorithm Builder ───────────────────────────────────────────────────────
 
-const BUILDER_GATES = ['H','X','Y','Z','S','T','RX','RY','RZ','CNOT','CZ','SWAP','CCX'];
+const BUILDER_GATES = ['H','X','Y','Z','S','T','RX','RY','RZ','CNOT','CZ','SWAP','ISWAP','CRY','RZZ','CCX','CSWAP'];
 const BUILDER_COLS = 12;
 
 function initBuilder() {
@@ -1497,10 +1563,10 @@ function buildCircuitGrid() {
 function onBuilderSlotClick(qubit, col, slotEl) {
   if(!selectedBuilderGate){ log('Selecciona una puerta primero','err'); return; }
   const gate=selectedBuilderGate;
-  const isTwoQ=['CNOT','CZ','SWAP'].includes(gate);
-  const isThreeQ=['CCX'].includes(gate);
+  const isTwoQ=['CNOT','CZ','SWAP','ISWAP','CRX','CRY','CRZ','RXX','RYY','RZZ'].includes(gate);
+  const isThreeQ=['CCX','CSWAP'].includes(gate);
   const n=parseInt(document.getElementById('builder-qcount').value)||3;
-  const needsParams=['RX','RY','RZ','P'].includes(gate);
+  const needsParams=['RX','RY','RZ','P','CRX','CRY','CRZ','RXX','RYY','RZZ'].includes(gate);
   let params=[];
   if(needsParams){ const v=prompt(`Parámetro θ para ${gate} (radianes):`,'1.5708'); if(!v)return; params=[parseFloat(v)||Math.PI/2]; }
 
@@ -1621,6 +1687,84 @@ document.getElementById('btn-add-qubit').addEventListener('click', async()=>{
 document.getElementById('btn-remove-qubit').addEventListener('click', async()=>{ await api('POST','/api/qubits/remove'); });
 document.getElementById('btn-clear-circuit').addEventListener('click', async()=>{ await api('POST','/api/reset'); });
 document.getElementById('state-search').addEventListener('input',e=>{ stateFilter=e.target.value.trim(); renderStatevector(); });
+
+// ─── Shot Sampling (histograma) ───────────────────────────────────────────────
+
+function renderSampleHistogram(data) {
+  const body = document.getElementById('sample-body');
+  const sub  = document.getElementById('sample-subheading');
+  if (!data || !data.counts) { body.innerHTML = '<div style="color:var(--text-dim)">Sin datos</div>'; return; }
+  sub.textContent = `${data.shots.toLocaleString()} shots · ${data.distinct} resultados distintos`;
+  const maxCount = Math.max(...data.counts.map(c=>c.count), 1);
+  body.innerHTML = `<div class="histo-list">` + data.counts.map(c=>{
+    const pct = (c.count / maxCount * 100);
+    return `<div class="histo-row">
+      <div class="histo-label">|${escHtml(c.state.slice(-12))}⟩</div>
+      <div class="histo-bar-wrap"><div class="histo-bar" style="width:${pct}%"><span class="histo-count">${c.count}</span></div></div>
+      <div class="histo-prob">${(c.prob*100).toFixed(1)}%</div>
+    </div>`;
+  }).join('') + `</div>`;
+}
+
+async function runSample() {
+  const shots = parseInt(document.getElementById('sample-shots').value) || 1024;
+  log(`⇶ Muestreando ${shots} shots...`, 'info');
+  try {
+    if (sendWS({cmd:'sample', shots})) return;       // WS path → renderSampleHistogram via message
+    const data = await api('POST','/api/sample',{shots});
+    renderSampleHistogram(data);
+  } catch(e) { log('Error en muestreo: '+e.message,'err'); }
+}
+
+document.getElementById('btn-sample').addEventListener('click', ()=>{
+  document.getElementById('sample-body').innerHTML =
+    '<div style="color:var(--text-dim);padding:20px;text-align:center">Pulsa «Ejecutar muestreo» para obtener el histograma de mediciones.</div>';
+  document.getElementById('sample-subheading').textContent = '';
+  document.getElementById('sample-overlay').classList.remove('hidden');
+});
+document.getElementById('sample-run').addEventListener('click', runSample);
+document.getElementById('sample-close').addEventListener('click', ()=>document.getElementById('sample-overlay').classList.add('hidden'));
+document.getElementById('sample-overlay').addEventListener('click', e=>{ if(e.target===e.currentTarget) e.currentTarget.classList.add('hidden'); });
+
+// ─── QASM Export ──────────────────────────────────────────────────────────────
+
+let _lastQasm = '';
+document.getElementById('btn-qasm').addEventListener('click', async()=>{
+  try {
+    const data = await api('GET','/api/qasm');
+    _lastQasm = data.qasm || '';
+    document.getElementById('qasm-code').textContent = _lastQasm || '// El circuito está vacío — aplica puertas o ejecuta un algoritmo primero.';
+    document.getElementById('qasm-subheading').textContent = `${data.n_qubits} qubits · profundidad ${data.depth} · OpenQASM 2.0 (Qiskit-compatible)`;
+    document.getElementById('qasm-overlay').classList.remove('hidden');
+  } catch(e) { log('Error exportando QASM: '+e.message,'err'); }
+});
+document.getElementById('qasm-close').addEventListener('click', ()=>document.getElementById('qasm-overlay').classList.add('hidden'));
+document.getElementById('qasm-overlay').addEventListener('click', e=>{ if(e.target===e.currentTarget) e.currentTarget.classList.add('hidden'); });
+document.getElementById('qasm-copy').addEventListener('click', ()=>{
+  navigator.clipboard?.writeText(_lastQasm).then(()=>log('QASM copiado al portapapeles','ok')).catch(()=>log('No se pudo copiar','err'));
+});
+document.getElementById('qasm-download').addEventListener('click', ()=>{
+  const blob = new Blob([_lastQasm||''], {type:'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'omega_circuit.qasm';
+  a.click();
+  URL.revokeObjectURL(a.href);
+  log('Circuito descargado (omega_circuit.qasm)','ok');
+});
+
+// ─── Noise Control ────────────────────────────────────────────────────────────
+
+let _noiseTimer = null;
+document.getElementById('noise-slider').addEventListener('input', e=>{
+  const pct = parseFloat(e.target.value);
+  document.getElementById('noise-value').textContent = pct.toFixed(1)+'%';
+  clearTimeout(_noiseTimer);
+  _noiseTimer = setTimeout(()=>{
+    const level = pct/100;
+    if (!sendWS({cmd:'noise', level})) { api('POST','/api/noise',{level}).catch(()=>{}); }
+  }, 220);
+});
 
 // ─── Console ─────────────────────────────────────────────────────────────────
 

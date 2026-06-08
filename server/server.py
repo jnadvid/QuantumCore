@@ -42,7 +42,7 @@ logger = logging.getLogger("quantum-server")
 #   export QC_JWT_SECRET=clave_secreta_muy_larga
 
 AUTH_USERNAME  = os.environ.get("QC_USER",       "admin")
-AUTH_PASSWORD  = os.environ.get("QC_PASSWORD",   "quantum2024!")
+AUTH_PASSWORD  = os.environ.get("QC_PASSWORD",   "admin1234")
 JWT_SECRET     = os.environ.get("QC_JWT_SECRET",  secrets.token_hex(32))
 JWT_ALGORITHM  = "HS256"
 JWT_EXPIRE_HOURS = 12   # El token expira en 12 horas
@@ -186,6 +186,12 @@ class QubitToggle(BaseModel):
     qubit: int
     enabled: bool
 
+class SampleRequest(BaseModel):
+    shots: int = 1024
+
+class NoiseRequest(BaseModel):
+    level: float = 0.0
+
 # ─── AUTH Endpoints (sin protección) ─────────────────────────────────────────
 
 @app.post("/auth/login")
@@ -257,6 +263,32 @@ async def measure_all(username: str = Depends(require_auth)):
     await broadcast_state()
     await broadcast_event("measured_all", {"results": results})
     return {"results": results}
+
+@app.post("/api/sample")
+async def sample_counts(req: SampleRequest, username: str = Depends(require_auth)):
+    """Sample the measurement distribution over many shots (real QPU behaviour).
+    Does NOT collapse the live state — returns a histogram of outcomes."""
+    result = qc.sample_counts(req.shots)
+    await broadcast_event("sampled", {"shots": result["shots"], "distinct": result["distinct"]})
+    return result
+
+@app.post("/api/noise")
+async def set_noise(req: NoiseRequest, username: str = Depends(require_auth)):
+    """Set per-gate depolarizing noise (0 = ideal, >0 = noisy NISQ device)."""
+    level = qc.set_noise(req.level)
+    await broadcast_state()
+    await broadcast_event("noise_set", {"level": level})
+    return {"success": True, "noise": level}
+
+@app.get("/api/metrics")
+async def get_metrics(username: str = Depends(require_auth)):
+    """Quantum figures of merit: entropy, entanglement, participation ratio."""
+    return qc.get_metrics()
+
+@app.get("/api/qasm")
+async def export_qasm(username: str = Depends(require_auth)):
+    """Export the executed circuit as OpenQASM 2.0."""
+    return {"qasm": qc.to_qasm(), "n_qubits": qc.n_qubits, "depth": len(qc.circuit_ops)}
 
 @app.post("/api/reset")
 async def reset_state(username: str = Depends(require_auth)):
@@ -346,9 +378,17 @@ async def list_gates(username: str = Depends(require_auth)):
             {"name": "CY",  "label": "CY",    "params": 0, "description": "Controlled-Y"},
             {"name": "CH",  "label": "CH",    "params": 0, "description": "Controlled-H"},
             {"name": "SWAP","label": "SWAP",  "params": 0, "description": "Swap qubits"},
+            {"name": "ISWAP","label":"iSWAP", "params": 0, "description": "Imaginary swap"},
+            {"name": "CRX", "label": "CRx(θ)","params": 1, "description": "Controlled X-rotation"},
+            {"name": "CRY", "label": "CRy(θ)","params": 1, "description": "Controlled Y-rotation"},
+            {"name": "CRZ", "label": "CRz(θ)","params": 1, "description": "Controlled Z-rotation"},
+            {"name": "RXX", "label": "Rxx(θ)","params": 1, "description": "Ising XX coupling"},
+            {"name": "RYY", "label": "Ryy(θ)","params": 1, "description": "Ising YY coupling"},
+            {"name": "RZZ", "label": "Rzz(θ)","params": 1, "description": "Ising ZZ coupling"},
         ],
         "three_qubit": [
-            {"name": "CCX", "label": "Toffoli", "params": 0, "description": "Double CNOT"},
+            {"name": "CCX",  "label": "Toffoli", "params": 0, "description": "Double-controlled NOT"},
+            {"name": "CSWAP","label": "Fredkin", "params": 0, "description": "Controlled SWAP"},
         ],
     }
 
@@ -367,6 +407,7 @@ async def list_algorithms(username: str = Depends(require_auth)):
         {"name": "simon",             "label": "Algoritmo de Simon",     "description": "Periodicidad oculta con ventaja exponencial",       "qubits_needed": 4},
         {"name": "phase_estimation",  "label": "Estimación de Fase (QPE)","description": "Núcleo de Shor y química cuántica",               "qubits_needed": 3},
         {"name": "swap_test",         "label": "SWAP Test",              "description": "Similitud cuántica — kernel para QML",             "qubits_needed": 3},
+        {"name": "w_state",           "label": "Estado W",               "description": "Entrelazamiento robusto multipartito",             "qubits_needed": 3},
     ]
 
 @app.get("/api/info")
@@ -383,6 +424,8 @@ async def get_info(username: str = Depends(require_auth)):
         "state_norm": float(np.sum(np.abs(qc.state)**2)),
         "circuit_depth": len(qc.circuit_ops),
         "connected_clients": len(active_websockets),
+        "noise": qc.noise,
+        "metrics": qc.get_metrics(),
     }
 
 # ─── WebSocket endpoint (protegido con token en query param) ──────────────────
@@ -443,6 +486,16 @@ async def websocket_endpoint(websocket: WebSocket):
                         result = qc.measure_qubit(qubit)
                         await broadcast_state()
                         await broadcast_event("measured", {"qubit": qubit, "result": result})
+
+                elif cmd == "sample":
+                    shots = int(data.get("shots", 1024))
+                    result = qc.sample_counts(shots)
+                    await websocket.send_text(json.dumps({"type": "sample_result", "data": result}))
+
+                elif cmd == "noise":
+                    level = qc.set_noise(float(data.get("level", 0.0)))
+                    await broadcast_state()
+                    await broadcast_event("noise_set", {"level": level})
 
                 elif cmd == "reset":
                     qc.reset()

@@ -51,6 +51,35 @@ def u3_gate(theta: float, phi: float, lam: float) -> np.ndarray:
         [cmath.exp(1j*phi)*s,    cmath.exp(1j*(phi+lam))*c]
     ], dtype=complex)
 
+# ─── Two-qubit parametric gates (Ising interactions) ───────────────────────────
+
+ISWAP = np.array([[1, 0, 0, 0],
+                  [0, 0, 1j, 0],
+                  [0, 1j, 0, 0],
+                  [0, 0, 0, 1]], dtype=complex)
+
+def rxx_gate(theta: float) -> np.ndarray:
+    c, s = math.cos(theta/2), math.sin(theta/2)
+    return np.array([[c, 0, 0, -1j*s],
+                     [0, c, -1j*s, 0],
+                     [0, -1j*s, c, 0],
+                     [-1j*s, 0, 0, c]], dtype=complex)
+
+def ryy_gate(theta: float) -> np.ndarray:
+    c, s = math.cos(theta/2), math.sin(theta/2)
+    return np.array([[c, 0, 0, 1j*s],
+                     [0, c, -1j*s, 0],
+                     [0, -1j*s, c, 0],
+                     [1j*s, 0, 0, c]], dtype=complex)
+
+def rzz_gate(theta: float) -> np.ndarray:
+    a = cmath.exp(-1j*theta/2)
+    b = cmath.exp(1j*theta/2)
+    return np.array([[a, 0, 0, 0],
+                     [0, b, 0, 0],
+                     [0, 0, b, 0],
+                     [0, 0, 0, a]], dtype=complex)
+
 # ─── QuantumState ─────────────────────────────────────────────────────────────
 
 class QuantumState:
@@ -63,6 +92,9 @@ class QuantumState:
         self.measurement_results: Dict[int, int] = {}
         self.enabled_qubits: List[bool] = [True] * n_qubits
         self.last_algorithm_result: Dict = {}
+        # Depolarizing noise probability applied per gate per involved qubit.
+        # 0.0 = ideal (noiseless) quantum computer. >0 = NISQ-style noisy device.
+        self.noise: float = 0.0
 
     def reset(self):
         self.state = np.zeros(self.num_states, dtype=complex)
@@ -115,6 +147,26 @@ class QuantumState:
         self._apply_controlled_gate(GATES["X"], q2, q1)
         self._apply_controlled_gate(GATES["X"], q1, q2)
 
+    def _apply_two_qubit_gate(self, U: np.ndarray, q1: int, q2: int):
+        """Apply an arbitrary 4×4 unitary on qubits (q1, q2) with q1 as the high bit."""
+        n = self.n_qubits
+        state_r = self.state.reshape([2] * n)
+        perm = [q1, q2] + [i for i in range(n) if i not in (q1, q2)]
+        inv = list(np.argsort(perm))
+        st = np.transpose(state_r, perm).reshape(4, -1)
+        st = U @ st
+        st = st.reshape([2, 2] + [2] * (n - 2))
+        self.state = np.transpose(st, inv).reshape(self.num_states)
+
+    def _apply_noise(self, qubits: List[int]):
+        """Quantum-trajectory depolarizing noise: with prob `noise` apply a random
+        Pauli to each involved qubit, emulating gate errors on a real NISQ device."""
+        if self.noise <= 0:
+            return
+        for q in qubits:
+            if 0 <= q < self.n_qubits and random.random() < self.noise:
+                self._apply_single_gate(random.choice([GATES["X"], GATES["Y"], GATES["Z"]]), q)
+
     def _project_qubit(self, qubit: int, result: int):
         n = self.n_qubits
         state_r = self.state.reshape([2] * n)
@@ -148,7 +200,14 @@ class QuantumState:
         elif gn == "CS":   self._apply_controlled_gate(GATES["S"], qubits[0], qubits[1])
         elif gn == "CT":   self._apply_controlled_gate(GATES["T"], qubits[0], qubits[1])
         elif gn == "CP":   self._apply_controlled_gate(phase_gate(params[0]), qubits[0], qubits[1])
+        elif gn == "CRX":  self._apply_controlled_gate(rx_gate(params[0]), qubits[0], qubits[1])
+        elif gn == "CRY":  self._apply_controlled_gate(ry_gate(params[0]), qubits[0], qubits[1])
+        elif gn == "CRZ":  self._apply_controlled_gate(rz_gate(params[0]), qubits[0], qubits[1])
         elif gn == "SWAP": self._apply_swap(qubits[0], qubits[1])
+        elif gn == "ISWAP": self._apply_two_qubit_gate(ISWAP, qubits[0], qubits[1])
+        elif gn == "RXX":  self._apply_two_qubit_gate(rxx_gate(params[0]), qubits[0], qubits[1])
+        elif gn == "RYY":  self._apply_two_qubit_gate(ryy_gate(params[0]), qubits[0], qubits[1])
+        elif gn == "RZZ":  self._apply_two_qubit_gate(rzz_gate(params[0]), qubits[0], qubits[1])
         elif gn in ("CCX","TOFFOLI"): self._apply_toffoli(qubits[0], qubits[1], qubits[2])
         elif gn == "CSWAP":
             self._apply_controlled_gate(GATES["X"], qubits[1], qubits[2])
@@ -157,6 +216,7 @@ class QuantumState:
         else:
             raise ValueError(f"Unknown gate: {gate_name}")
 
+        self._apply_noise(qubits)
         self.circuit_ops.append(record)
         return record
 
@@ -243,22 +303,128 @@ class QuantumState:
             })
         return result
 
+    def _reduced_density_matrix(self, keep: List[int]) -> np.ndarray:
+        """Partial trace: density matrix of the `keep` qubits, tracing out the rest."""
+        n = self.n_qubits
+        keep = sorted(keep)
+        psi = self.state.reshape([2] * n)
+        perm = keep + [i for i in range(n) if i not in keep]
+        psi = np.transpose(psi, perm).reshape(2 ** len(keep), -1)
+        return psi @ psi.conj().T
+
+    @staticmethod
+    def _vn_entropy(rho: np.ndarray) -> float:
+        """Von Neumann entropy S(ρ) = −Tr(ρ log₂ ρ), in bits (ebits)."""
+        ev = np.linalg.eigvalsh(rho).real
+        ev = ev[ev > 1e-12]
+        return float(-np.sum(ev * np.log2(ev))) if ev.size else 0.0
+
+    def _entanglement_entropy(self, qubit: int) -> float:
+        """Entanglement of a single qubit with the rest = S of its reduced ρ (0..1 ebit)."""
+        return self._vn_entropy(self._reduced_density_matrix([qubit]))
+
     def get_entanglement_map(self) -> List[List[float]]:
+        """Quantum mutual information I(i:j) = S(ρ_i)+S(ρ_j)−S(ρ_ij), normalized to [0,1].
+        This is a true, basis-independent measure of total correlations between qubits."""
         n = self.n_qubits
         limit = min(n, 12)
         emap = [[0.0] * limit for _ in range(limit)]
-        bloch_cache = {i: self._bloch_vector(i) for i in range(limit)}
+        # Performance guard: pairwise partial traces are O(pairs · 2ⁿ). Skip for huge systems.
+        if self.num_states > (1 << 16):
+            return emap
+        s_single = [self._vn_entropy(self._reduced_density_matrix([i])) for i in range(limit)]
         for i in range(limit):
-            bi = bloch_cache[i]
-            ri = math.sqrt(bi["x"]**2 + bi["y"]**2 + bi["z"]**2)
             for j in range(i + 1, limit):
-                bj = bloch_cache[j]
-                rj = math.sqrt(bj["x"]**2 + bj["y"]**2 + bj["z"]**2)
-                dot = bi["x"]*bj["x"] + bi["y"]*bj["y"] + bi["z"]*bj["z"]
-                ent = round(max(0.0, min(1.0, 1.0 - ri * rj + abs(dot) * 0.3)), 4)
+                s_ij = self._vn_entropy(self._reduced_density_matrix([i, j]))
+                mi = max(0.0, s_single[i] + s_single[j] - s_ij)
+                ent = round(min(1.0, mi / 2.0), 4)   # I_max = 2 ebits for 2 qubits
                 emap[i][j] = ent
                 emap[j][i] = ent
         return emap
+
+    # ─── Quantum metrics ──────────────────────────────────────────────────────
+
+    def get_metrics(self) -> Dict:
+        """Global figures of merit that characterize the current quantum state."""
+        probs = np.abs(self.state) ** 2
+        total = float(probs.sum())
+        if total > 0:
+            probs = probs / total
+        nz = probs[probs > 1e-15]
+        shannon = float(-np.sum(nz * np.log2(nz))) if nz.size else 0.0   # measurement entropy
+        ipr = float(np.sum(probs ** 2))                                  # inverse participation ratio
+        participation = (1.0 / ipr) if ipr > 0 else 0.0                  # effective # of states
+        # Entanglement entropy is O(qubits · 2ⁿ); guard against huge systems.
+        if self.num_states <= (1 << 16):
+            ent = [self._entanglement_entropy(q) for q in range(min(self.n_qubits, 16))]
+        else:
+            ent = []
+        avg_ent = float(np.mean(ent)) if ent else 0.0
+        max_ent = float(np.max(ent)) if ent else 0.0
+        return {
+            "shannon_entropy": round(shannon, 4),
+            "max_shannon": self.n_qubits,
+            "participation_ratio": round(participation, 3),
+            "avg_entanglement": round(avg_ent, 4),
+            "max_entanglement": round(max_ent, 4),
+            "superposition_states": int(np.count_nonzero(probs > 1e-9)),
+            "noise": round(self.noise, 4),
+        }
+
+    def set_noise(self, level: float) -> float:
+        """Set per-gate depolarizing noise (0.0 ideal … ~0.1 very noisy NISQ)."""
+        self.noise = max(0.0, min(float(level), 0.5))
+        return self.noise
+
+    # ─── Shot-based sampling (real quantum-computer behaviour) ─────────────────
+
+    def sample_counts(self, shots: int = 1024) -> Dict:
+        """Sample the measurement distribution `shots` times WITHOUT collapsing the
+        persistent state — exactly how a real QPU returns counts over many runs."""
+        shots = max(1, min(int(shots), 100000))
+        probs = np.abs(self.state) ** 2
+        total = probs.sum()
+        if total > 0:
+            probs = probs / total
+        draws = np.random.choice(self.num_states, size=shots, p=probs)
+        idx, cnt = np.unique(draws, return_counts=True)
+        order = np.argsort(cnt)[::-1]
+        counts = [{
+            "state": format(int(idx[k]), f'0{self.n_qubits}b'),
+            "count": int(cnt[k]),
+            "prob": round(float(cnt[k]) / shots, 5),
+        } for k in order[:32]]
+        return {"shots": shots, "distinct": int(idx.size), "counts": counts}
+
+    # ─── OpenQASM 2.0 export ───────────────────────────────────────────────────
+
+    def to_qasm(self) -> str:
+        """Export the executed circuit as OpenQASM 2.0 (runs on Qiskit / real hardware)."""
+        qasm_map = {
+            "I": "id", "H": "h", "X": "x", "Y": "y", "Z": "z", "S": "s", "T": "t",
+            "SDG": "sdg", "TDG": "tdg", "SX": "sx", "RX": "rx", "RY": "ry", "RZ": "rz",
+            "P": "p", "PHASE": "p", "U3": "u3", "CNOT": "cx", "CX": "cx", "CZ": "cz",
+            "CY": "cy", "CH": "ch", "CP": "cp", "CRX": "crx", "CRY": "cry", "CRZ": "crz",
+            "SWAP": "swap", "ISWAP": "iswap", "RXX": "rxx", "RYY": "ryy", "RZZ": "rzz",
+            "CCX": "ccx", "TOFFOLI": "ccx", "CSWAP": "cswap",
+        }
+        lines = ["OPENQASM 2.0;", 'include "qelib1.inc";',
+                 f"qreg q[{self.n_qubits}];", f"creg c[{self.n_qubits}];"]
+        for op in self.circuit_ops:
+            g = str(op.get("gate", "")).upper()
+            qs = op.get("qubits", [])
+            ps = op.get("params", []) or []
+            if g == "MEASURE":
+                q = qs[0] if qs else 0
+                lines.append(f"measure q[{q}] -> c[{q}];")
+                continue
+            name = qasm_map.get(g)
+            if not name:
+                continue
+            pstr = f"({','.join(f'{p:.6f}' for p in ps)})" if ps else ""
+            qstr = ",".join(f"q[{q}]" for q in qs)
+            lines.append(f"{name}{pstr} {qstr};")
+        return "\n".join(lines)
 
     # ─── Qubit add/remove ────────────────────────────────────────────────────
 
@@ -824,6 +990,29 @@ class QuantumState:
                 "note": "Usado en QML para medir distancia entre estados cuanticos y como subrrutina de VQE."
             }
 
+        # ── W State ───────────────────────────────────────────────────────────
+        elif name == "w_state":
+            n = min(params.get("n", N), N, 10)
+            n = max(n, 2)
+            # Build |W_n> = (|10..0> + |01..0> + ... + |0..01>)/√n
+            # via a cascade of controlled-RY rotations seeding amplitude down the chain.
+            self.apply_gate("X", [0])
+            for i in range(n - 1):
+                theta = 2 * math.acos(math.sqrt(1.0 / (n - i)))
+                self._apply_controlled_gate(ry_gate(theta), i, i + 1)
+                self.apply_gate("CNOT", [i + 1, i])
+            top = self._top_states(min(n, 8))
+            return {
+                "algorithm": f"Estado W ({n} qubits)",
+                "description": f"Superposición de las {n} permutaciones con un solo |1⟩ — entrelazamiento robusto",
+                "circuit": "X(q0) → cadena de [CRY(θᵢ) + CNOT] propagando una excitación",
+                "state_formula": f"(|10…0⟩ + |01…0⟩ + … + |0…01⟩) / √{n}",
+                "top_states": top,
+                "entanglement": "Robusto (sobrevive a la pérdida de 1 qubit)",
+                "note": "A diferencia del GHZ, el estado W mantiene entrelazamiento aunque se mida un qubit",
+                "fidelity": 1.0
+            }
+
         return {"error": f"Algoritmo desconocido: {name}"}
 
     # ─── Full state snapshot ──────────────────────────────────────────────────
@@ -836,5 +1025,6 @@ class QuantumState:
             "entanglement": self.get_entanglement_map(),
             "circuit": self.circuit_ops[-50:],
             "norm": round(float(np.sum(np.abs(self.state) ** 2)), 8),
+            "metrics": self.get_metrics(),
             "last_algorithm": self.last_algorithm_result
         }

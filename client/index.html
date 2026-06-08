@@ -83,6 +83,9 @@
 
       <!-- Server info -->
       <div id="login-server-info" style="margin-top:1.5rem;font-size:.68rem;color:rgba(255,255,255,0.25);text-align:center"></div>
+      <div style="margin-top:.5rem;font-size:.66rem;color:rgba(0,200,255,0.35);text-align:center;letter-spacing:.04em">
+        Acceso por defecto &mdash; usuario <b style="color:rgba(0,200,255,0.6)">admin</b> &nbsp;·&nbsp; contraseña <b style="color:rgba(0,200,255,0.6)">admin1234</b>
+      </div>
     </div>
   </div>
   <!-- ═══════════════════════════════════════════════════════════════ -->
@@ -123,6 +126,8 @@
       <span id="ram-info-display" style="color:var(--accent3);font-size:10px">RAM: detectando...</span>
     </div>
     <div class="header-actions">
+      <button class="btn btn-ghost" id="btn-qasm" title="Exportar circuito a OpenQASM 2.0">⤓ QASM</button>
+      <button class="btn btn-ghost" id="btn-sample" title="Muestrear distribución (shots)">⇶ Muestreo</button>
       <button class="btn btn-ghost" id="btn-reset" title="Reset al estado |0...0⟩">↺ Reset</button>
       <button class="btn btn-warning" id="btn-measure-all">⊗ Medir Todo</button>
     </div>
@@ -256,6 +261,19 @@
     <!-- SIDEBAR RIGHT -->
     <aside class="sidebar-right">
       <section class="panel">
+        <h3 class="panel-title">Métricas Cuánticas</h3>
+        <div id="metrics-grid" class="metrics-grid"></div>
+        <div class="noise-control">
+          <div class="noise-head">
+            <span class="noise-label">Ruido del dispositivo</span>
+            <span id="noise-value" class="noise-value">0.0%</span>
+          </div>
+          <input type="range" id="noise-slider" class="noise-slider" min="0" max="20" step="0.5" value="0" />
+          <div class="noise-hint">0% = ideal &nbsp;·&nbsp; &gt;0% = dispositivo NISQ ruidoso</div>
+        </div>
+      </section>
+
+      <section class="panel">
         <h3 class="panel-title">Vector de Estado</h3>
         <div class="state-filter">
           <input type="text" id="state-search" placeholder="Filtrar estados..." class="input-sm" />
@@ -299,6 +317,53 @@
         <button class="btn btn-ghost btn-sm" id="algo-result-close">✕</button>
       </div>
       <div id="algo-result-body" class="algo-result-body"></div>
+    </div>
+  </div>
+
+  <!-- SAMPLE / HISTOGRAM MODAL -->
+  <div id="sample-overlay" class="modal-overlay hidden">
+    <div class="modal modal-algo-result">
+      <div class="modal-title algo-result-title">
+        <span style="color:var(--accent4)">⇶</span>
+        <div>
+          <div>Muestreo Cuántico — Histograma de Mediciones</div>
+          <div id="sample-subheading" style="font-size:11px;color:var(--text-dim);font-weight:400"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="sample-close">✕</button>
+      </div>
+      <div class="sample-controls">
+        <label class="modal-label">Shots:</label>
+        <select id="sample-shots" class="modal-input" style="width:120px">
+          <option value="256">256</option>
+          <option value="1024" selected>1024</option>
+          <option value="4096">4096</option>
+          <option value="8192">8192</option>
+          <option value="16384">16384</option>
+        </select>
+        <button class="btn btn-primary btn-sm" id="sample-run">▶ Ejecutar muestreo</button>
+      </div>
+      <div class="algo-result-body" id="sample-body"></div>
+    </div>
+  </div>
+
+  <!-- QASM EXPORT MODAL -->
+  <div id="qasm-overlay" class="modal-overlay hidden">
+    <div class="modal modal-algo-result">
+      <div class="modal-title algo-result-title">
+        <span style="color:var(--accent3)">⤓</span>
+        <div>
+          <div>Exportar Circuito — OpenQASM 2.0</div>
+          <div id="qasm-subheading" style="font-size:11px;color:var(--text-dim);font-weight:400">Compatible con Qiskit y hardware real</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="qasm-close">✕</button>
+      </div>
+      <div class="algo-result-body">
+        <pre id="qasm-code" class="qasm-code"></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="qasm-copy">⧉ Copiar</button>
+        <button class="btn btn-primary" id="qasm-download">⤓ Descargar .qasm</button>
+      </div>
     </div>
   </div>
 
