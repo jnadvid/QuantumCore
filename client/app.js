@@ -1139,31 +1139,62 @@ function renderBlochGrid() {
  * This gives a clear 3D feel without WebGL.
  */
 
-let blochAz = 0.5;            // azimuth (rotación continua alrededor del eje Z)
-let blochSpin = true;        // animación activada
+let blochAz = 0.6;           // azimut (rotación alrededor del eje vertical Z)
+let blochEl = -0.35;         // elevación (inclinación vista desde arriba)
+let blochSpin = true;        // auto-rotación
+let blochDragging = false;
 let _blochLastTs = 0;
 
+// Proyección ortográfica 3D real: rota (x,y,z) por azimut (Z) y elevación (X) y proyecta.
 function bloch3D(bx, by, bz) {
-  // Rotate (x,y) by the current azimuth, then project (isometric-style)
-  const c = Math.cos(blochAz), s = Math.sin(blochAz);
-  const x = bx * c - by * s, y = bx * s + by * c;
-  const sx = x * 0.72 - y * 0.72 * 0.5;
-  const sy = -bz * 0.82 + (x + y) * 0.20;
-  return { sx, sy };
+  const ca = Math.cos(blochAz), sa = Math.sin(blochAz);
+  const x = bx * ca - by * sa, y = bx * sa + by * ca, z = bz;
+  const ce = Math.cos(blochEl), se = Math.sin(blochEl);
+  const y2 = y * ce - z * se;
+  const z2 = y * se + z * ce;
+  return { sx: x, sy: -z2, depth: y2 };   // depth>0 = hacia el observador
 }
 
 function blochLoop(ts) {
   requestAnimationFrame(blochLoop);
-  if (!blochSpin || document.hidden) return;
+  if (!blochSpin || blochDragging || document.hidden) return;
   if (ts - _blochLastTs < 45) return;          // ~22 fps
   _blochLastTs = ts;
   const qubits = state.qubit_states || [];
-  if (!qubits.length || qubits.length > 12) return;   // pause for very large registers
+  if (!qubits.length || qubits.length > 12) return;
   blochAz += 0.011;
   if (blochAz > Math.PI * 2) blochAz -= Math.PI * 2;
   qubits.forEach((q, i) => drawBlochSphere(i, q));
 }
 requestAnimationFrame(blochLoop);
+
+// Rotación 3D interactiva por arrastre del ratón (o táctil)
+(function initBlochDrag() {
+  const grid = document.getElementById('bloch-grid');
+  if (!grid) return;
+  grid.style.cursor = 'grab';
+  let lx = 0, ly = 0;
+  const redraw = () => (state.qubit_states || []).forEach((q, i) => drawBlochSphere(i, q));
+  grid.addEventListener('pointerdown', e => {
+    blochDragging = true; lx = e.clientX; ly = e.clientY;
+    grid.style.cursor = 'grabbing';
+    // al arrastrar, el control pasa al usuario: se detiene la auto-rotación
+    if (blochSpin) {
+      blochSpin = false;
+      const btn = document.getElementById('bloch-spin');
+      if (btn) { btn.classList.remove('active'); btn.textContent = '◌ Estático'; }
+    }
+    e.preventDefault();
+  });
+  window.addEventListener('pointermove', e => {
+    if (!blochDragging) return;
+    const dx = e.clientX - lx, dy = e.clientY - ly; lx = e.clientX; ly = e.clientY;
+    blochAz += dx * 0.012;
+    blochEl = Math.max(-1.5, Math.min(1.5, blochEl + dy * 0.012));
+    redraw();
+  });
+  window.addEventListener('pointerup', () => { blochDragging = false; grid.style.cursor = 'grab'; });
+})();
 
 function drawBlochSphere(idx, q) {
   const svg = document.getElementById(`bsvg-${idx}`);
