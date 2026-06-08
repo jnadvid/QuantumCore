@@ -1375,13 +1375,14 @@ class QuantumState:
             target_idx = int(params.get("target", 0))
             if target_idx < 0 or target_idx >= len(items):
                 target_idx = 0
-            k = max(2, min(int(math.ceil(math.log2(max(len(items), 2)))), N, 8))
+            k = max(2, min(int(math.ceil(math.log2(max(len(items), 2)))), N, 10))
             N_states = 2 ** k
             rest = N - k
             full_target = target_idx << rest
             for i in range(k):
                 self.apply_gate("H", [i])
-            iters = max(1, min(round(math.pi / 4 * math.sqrt(N_states)), 12))
+            # numero optimo de iteraciones de Grover ~ (pi/4)*sqrt(N)
+            iters = max(1, min(round(math.pi / 4 * math.sqrt(N_states)), 100))
             for _ in range(iters):
                 self._grover_oracle(k, full_target)
                 self._grover_diffusion(k, rest)
