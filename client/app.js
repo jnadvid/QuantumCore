@@ -922,6 +922,34 @@ function renderAll() {
   renderEntanglement();
   renderCircuitDiagram();
   renderMetrics();
+  renderResources();
+}
+
+let sysInfo = {};
+function fmtMem(mb) {
+  if (mb >= 1048576) return (mb / 1048576).toFixed(1) + ' TB';
+  if (mb >= 1024) return (mb / 1024).toFixed(1) + ' GB';
+  if (mb >= 1) return mb.toFixed(0) + ' MB';
+  if (mb >= 0.001) return (mb * 1024).toFixed(0) + ' KB';
+  return (mb * 1048576).toFixed(0) + ' B';
+}
+function renderResources() {
+  const el = document.getElementById('resources');
+  if (!el) return;
+  const n = state.n_qubits || 0;
+  const maxQ = sysInfo.max_qubits;
+  const stateMB = (Math.pow(2, n) * 16) / 1048576;     // 16 bytes por amplitud (complejo128)
+  const dim = Math.pow(2, n);
+  const pct = maxQ ? Math.min(100, (n / maxQ) * 100) : 0;
+  const dimStr = dim >= 1e9 ? dim.toExponential(2) : dim.toLocaleString('es');
+  el.innerHTML = `
+    <div class="res-row"><span>RAM del sistema</span><b>${sysInfo.total_ram_gb ?? '—'} GB</b></div>
+    <div class="res-row"><span>Capacidad máxima</span><b class="res-hi">${maxQ ?? '—'} qubits</b></div>
+    <div class="res-bar"><div style="width:${pct}%"></div></div>
+    <div class="res-row"><span>Qubits en uso</span><b>${n} / ${maxQ ?? '—'}</b></div>
+    <div class="res-row"><span>Dimensión de Hilbert</span><b>2<sup>${n}</sup> = ${dimStr}</b></div>
+    <div class="res-row"><span>Estado en memoria</span><b>${fmtMem(stateMB)}</b></div>
+    <div class="res-note">Cada qubit añadido <b>duplica</b> la RAM usada: el límite lo marca tu memoria.</div>`;
 }
 
 // ─── Quantum Metrics ──────────────────────────────────────────────────────────
@@ -1111,12 +1139,31 @@ function renderBlochGrid() {
  * This gives a clear 3D feel without WebGL.
  */
 
+let blochAz = 0.5;            // azimuth (rotación continua alrededor del eje Z)
+let blochSpin = true;        // animación activada
+let _blochLastTs = 0;
+
 function bloch3D(bx, by, bz) {
-  // Isometric-style projection (X right-forward, Y left-forward, Z up)
-  const sx = bx * 0.72 - by * 0.72 * 0.5;
-  const sy = -bz * 0.82 + (bx + by) * 0.20;
+  // Rotate (x,y) by the current azimuth, then project (isometric-style)
+  const c = Math.cos(blochAz), s = Math.sin(blochAz);
+  const x = bx * c - by * s, y = bx * s + by * c;
+  const sx = x * 0.72 - y * 0.72 * 0.5;
+  const sy = -bz * 0.82 + (x + y) * 0.20;
   return { sx, sy };
 }
+
+function blochLoop(ts) {
+  requestAnimationFrame(blochLoop);
+  if (!blochSpin || document.hidden) return;
+  if (ts - _blochLastTs < 45) return;          // ~22 fps
+  _blochLastTs = ts;
+  const qubits = state.qubit_states || [];
+  if (!qubits.length || qubits.length > 12) return;   // pause for very large registers
+  blochAz += 0.011;
+  if (blochAz > Math.PI * 2) blochAz -= Math.PI * 2;
+  qubits.forEach((q, i) => drawBlochSphere(i, q));
+}
+requestAnimationFrame(blochLoop);
 
 function drawBlochSphere(idx, q) {
   const svg = document.getElementById(`bsvg-${idx}`);
@@ -1159,7 +1206,9 @@ function drawBlochSphere(idx, q) {
       </radialGradient>
     </defs>
     <ellipse cx="0" cy="1.08" rx="0.72" ry="0.11" fill="rgba(0,0,0,0.35)"/>
-    <circle cx="0" cy="0" r="1" fill="url(#${gid})" stroke="rgba(148,163,184,0.30)" stroke-width="0.02"/>
+    <circle cx="0" cy="0" r="1.05" fill="none" stroke="${col}" stroke-width="0.05" opacity="0.16"/>
+    <circle cx="0" cy="0" r="1" fill="url(#${gid})" stroke="rgba(148,163,184,0.32)" stroke-width="0.02"/>
+    <ellipse cx="-0.3" cy="-0.34" rx="0.34" ry="0.2" fill="rgba(255,255,255,0.05)" transform="rotate(-28 -0.3 -0.34)"/>
     ${[-0.6, -0.3, 0.3, 0.6].map(z => `<polyline points="${ringPts(z)}" fill="none" stroke="rgba(148,163,184,0.10)" stroke-width="0.011"/>`).join('')}
     <polyline points="${ringPts(0)}" fill="none" stroke="rgba(56,189,248,0.32)" stroke-width="0.02" stroke-dasharray="0.05,0.04"/>
     <polyline points="${meridianPts('xz')}" fill="none" stroke="rgba(148,163,184,0.10)" stroke-width="0.011"/>
@@ -1177,8 +1226,9 @@ function drawBlochSphere(idx, q) {
     <line x1="0" y1="0" x2="${tx.toFixed(3)}" y2="${ty.toFixed(3)}" stroke="${col}" stroke-width="0.11" opacity="0.16" stroke-linecap="round"/>
     <line x1="0" y1="0" x2="${tx.toFixed(3)}" y2="${ty.toFixed(3)}" stroke="${col}" stroke-width="0.045" stroke-linecap="round"/>
     <polygon points="${tx.toFixed(3)},${ty.toFixed(3)} ${a1x},${a1y} ${a2x},${a2y}" fill="${col}"/>
-    <circle cx="${tx.toFixed(3)}" cy="${ty.toFixed(3)}" r="0.07" fill="${col}"/>
-    <circle cx="${tx.toFixed(3)}" cy="${ty.toFixed(3)}" r="0.03" fill="rgba(255,255,255,0.9)"/>
+    <circle cx="${tx.toFixed(3)}" cy="${ty.toFixed(3)}" r="${(0.085 + 0.022 * Math.abs(Math.sin(blochAz * 3))).toFixed(3)}" fill="${col}" opacity="0.32"/>
+    <circle cx="${tx.toFixed(3)}" cy="${ty.toFixed(3)}" r="0.065" fill="${col}"/>
+    <circle cx="${tx.toFixed(3)}" cy="${ty.toFixed(3)}" r="0.028" fill="rgba(255,255,255,0.92)"/>
   `;
 
   if (prob) {
@@ -1204,6 +1254,13 @@ function applyBlochSize() {
 }
 document.getElementById('bloch-size-up').addEventListener('click', () => { blochSize = Math.min(blochSize + 22, 240); applyBlochSize(); });
 document.getElementById('bloch-size-down').addEventListener('click', () => { blochSize = Math.max(blochSize - 22, 84); applyBlochSize(); });
+document.getElementById('bloch-spin').addEventListener('click', (e) => {
+  blochSpin = !blochSpin;
+  e.currentTarget.classList.toggle('active', blochSpin);
+  e.currentTarget.textContent = blochSpin ? '◓ Girar' : '◌ Estático';
+  if (!blochSpin) (state.qubit_states || []).forEach((q, i) => drawBlochSphere(i, q));
+});
+document.getElementById('bloch-spin').classList.add('active');
 
 // ─── Probability Chart ───────────────────────────────────────────────────────
 
@@ -1305,7 +1362,7 @@ function renderCircuitDiagram() {
   if (!host) return;
   const n = state.n_qubits || 0;
   const allOps = (state.circuit || []);
-  const ops = allOps.slice(-30);
+  const ops = allOps.slice(-48);
   if (!n) { host.innerHTML = ''; return; }
   if (!ops.length) {
     host.innerHTML = `<div class="circ-empty">Sin operaciones todavía. Aplica una puerta o ejecuta un algoritmo para ver el circuito.</div>`;
@@ -2093,7 +2150,17 @@ document.getElementById('btn-add-qubit').addEventListener('click', async()=>{
   await api('POST','/api/qubits/add');
 });
 document.getElementById('btn-remove-qubit').addEventListener('click', async()=>{ await api('POST','/api/qubits/remove'); });
-document.getElementById('btn-clear-circuit').addEventListener('click', async()=>{ await api('POST','/api/reset'); });
+document.getElementById('btn-clear-circuit').addEventListener('click', async()=>{
+  selectedQubits = [];
+  // feedback inmediato: vacía el diagrama y cierra modales abiertos
+  state.circuit = [];
+  renderCircuitDiagram();
+  ['enterprise-overlay','algo-result-overlay','measure-result-overlay'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.classList.add('hidden');
+  });
+  try { await api('POST','/api/reset'); log('Circuito limpiado → |0…0⟩','ok'); }
+  catch(e){ log('No se pudo limpiar: '+e.message,'err'); }
+});
 document.getElementById('state-search').addEventListener('input',e=>{ stateFilter=e.target.value.trim(); renderStatevector(); });
 
 // ─── Shot Sampling (histograma) ───────────────────────────────────────────────
@@ -2217,6 +2284,7 @@ async function init() {
   // Fetch system info and display RAM + max qubits
   try {
     const info = await apiFetch(API_BASE+'/api/info').then(r=>r.json());
+    sysInfo = info; renderResources();
     const maxQ = info.max_qubits;
     const ramGb = info.total_ram_gb;
     const usableGb = info.usable_ram_gb;

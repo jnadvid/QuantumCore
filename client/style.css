@@ -1299,3 +1299,17 @@ body::before {
 /* Use-case form modal sizing */
 #usecase-form-modal { width: 760px; max-width: 96vw; max-height: 92vh; overflow-y: auto; padding: 22px 24px; }
 #usecase-form .uf-head { margin-bottom: 10px; }
+
+/* ─── Resources panel (RAM → qubits) ──────────────────────────────────────── */
+.resources { display: flex; flex-direction: column; gap: 7px; }
+.res-row { display: flex; align-items: baseline; justify-content: space-between; font-size: 10.5px; color: var(--text-dim); }
+.res-row b { color: var(--text); font-family: var(--font-mono); font-weight: 600; }
+.res-row b.res-hi { color: var(--accent); font-size: 13px; }
+.res-row sup { font-size: 0.7em; }
+.res-bar { height: 6px; border-radius: 4px; background: rgba(0,0,0,0.4); overflow: hidden; border: 1px solid var(--border); }
+.res-bar > div { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent3), var(--accent), var(--accent4)); transition: width 0.5s ease; }
+.res-note { font-size: 9px; color: var(--text-muted); line-height: 1.5; margin-top: 3px; }
+.res-note b { color: var(--text-dim); }
+
+/* spin toggle active */
+#bloch-spin.active { color: var(--accent); border-color: var(--accent); }

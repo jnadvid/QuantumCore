@@ -1092,17 +1092,41 @@ class QuantumState:
         perm = list(range(1, q + 1)) + [0] + list(range(q + 1, n))
         return np.transpose(pr, perm).reshape(2 ** n)
 
+    def _qaoa_build_circuit(self, cost: np.ndarray, n: int, gamma: float, beta: float):
+        """Build the QAOA p=1 circuit with REAL gates so it is recorded and drawable:
+        H layer → cost layer (P single-qubit + CP two-qubit phases) → RX mixer.
+        For a quadratic (QUBO/Ising) cost this reproduces e^{-iγC} exactly via the
+        P/CP decomposition (x_i=1 → phase; x_i·x_j=1 → controlled phase)."""
+        self.reset()
+        c0 = float(cost[0])
+        for i in range(n):
+            self.apply_gate("H", [i])
+        # Linear terms h_i = C(e_i) − C(0)  → single-qubit phase P(−γ·h_i)
+        h = [float(cost[1 << (n - 1 - i)]) - c0 for i in range(n)]
+        for i in range(n):
+            if abs(gamma * h[i]) > 1e-9:
+                self.apply_gate("P", [i], [-gamma * h[i]])
+        # Quadratic terms J_ij = C(e_i+e_j) − C(e_i) − C(e_j) + C(0)  → CP(−γ·J_ij)
+        for i in range(n):
+            for j in range(i + 1, n):
+                jij = (float(cost[(1 << (n - 1 - i)) | (1 << (n - 1 - j))])
+                       - float(cost[1 << (n - 1 - i)]) - float(cost[1 << (n - 1 - j)]) + c0)
+                if abs(gamma * jij) > 1e-9:
+                    self.apply_gate("CP", [i, j], [-gamma * jij])
+        # Mixer layer
+        for i in range(n):
+            self.apply_gate("RX", [i], [2 * beta])
+
     def _qaoa_solve(self, cost: np.ndarray, n: int, maximize: bool = True, grid: int = 22):
-        """Exact QAOA (p=1) optimizer for an arbitrary diagonal cost function.
-        The cost-phase layer e^{-iγC} is applied exactly to the state vector — any
-        QUBO/Ising objective is supported. Returns (probs, best_params, best_exp)
-        and embeds the optimized distribution into the live state for visualization."""
+        """QAOA (p=1) optimizer for a diagonal cost. A fast numpy grid search finds the
+        optimal (γ, β); the chosen circuit is then rebuilt with REAL gates (so it is
+        recorded and drawn step by step). Returns (probs, best_params, best_exp)."""
         dim = 2 ** n
         psi0 = np.ones(dim, dtype=complex) / math.sqrt(dim)
         cost = np.asarray(cost, dtype=float)
         gammas = np.linspace(0, 2 * math.pi, grid)
         betas = np.linspace(0, math.pi, grid)
-        best_exp, best_params, best_psi = None, None, psi0
+        best_exp, best_params = None, (0.0, 0.0)
         for g in gammas:
             base = psi0 * np.exp(-1j * g * cost)
             for b in betas:
@@ -1112,14 +1136,11 @@ class QuantumState:
                     psi = self._np_apply_1q(psi, rx, q, n)
                 exp = float(np.sum((np.abs(psi) ** 2) * cost))
                 if best_exp is None or (maximize and exp > best_exp) or (not maximize and exp < best_exp):
-                    best_exp, best_params, best_psi = exp, (g, b), psi
-        probs = np.abs(best_psi) ** 2
-        # Embed into the live full state on the first n qubits (rest stay |0⟩)
-        full = np.zeros(self.num_states, dtype=complex)
+                    best_exp, best_params = exp, (g, b)
+        # Rebuild the optimal circuit with real gates (records ops, produces the live state)
+        self._qaoa_build_circuit(cost, n, best_params[0], best_params[1])
         shift = self.n_qubits - n
-        for k in range(dim):
-            full[k << shift] = best_psi[k]
-        self.state = full
+        probs = np.array([abs(self.state[k << shift]) ** 2 for k in range(dim)], dtype=float)
         return probs, best_params, best_exp
 
     @staticmethod

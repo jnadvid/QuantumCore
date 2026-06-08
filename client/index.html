@@ -233,6 +233,7 @@
         <div class="panel-header">
           <h3 class="panel-title">Esferas de Bloch</h3>
           <div class="bloch-controls">
+            <button class="btn btn-sm btn-ghost" id="bloch-spin" title="Activar/parar rotación">◓ Girar</button>
             <button class="btn btn-sm btn-ghost" id="bloch-size-down" title="Reducir">−</button>
             <button class="btn btn-sm btn-ghost" id="bloch-size-up" title="Ampliar">+</button>
             <span class="panel-sub" id="bloch-sub"><span id="bloch-count">0</span> qubits</span>
@@ -248,7 +249,7 @@
         <div class="panel-header">
           <h3 class="panel-title">Circuito Cuántico</h3>
           <div class="bloch-controls">
-            <button class="btn btn-sm btn-ghost" id="btn-pennylane" title="Reconstruir y verificar con PennyLane">PennyLane</button>
+            <button class="btn btn-sm btn-ghost" id="btn-pennylane" title="Reconstruye el circuito con la librería PennyLane de Python y verifica el resultado">Ver en PennyLane</button>
             <button class="btn btn-sm btn-ghost" id="btn-clear-circuit">Limpiar</button>
           </div>
         </div>
@@ -270,6 +271,11 @@
 
     <!-- SIDEBAR RIGHT -->
     <aside class="sidebar-right">
+      <section class="panel">
+        <h3 class="panel-title">Recursos · RAM → qubits</h3>
+        <div id="resources" class="resources"></div>
+      </section>
+
       <section class="panel">
         <h3 class="panel-title">Métricas Cuánticas</h3>
         <div id="metrics-grid" class="metrics-grid"></div>
@@ -350,12 +356,17 @@
       <div class="modal-title algo-result-title">
         <span style="color:var(--accent2)">⎯</span>
         <div>
-          <div>Circuito reconstruido con PennyLane</div>
+          <div>Circuito en PennyLane</div>
           <div id="pennylane-sub" style="font-size:11px;color:var(--text-dim);font-weight:400"></div>
         </div>
         <button class="btn btn-ghost btn-sm" id="pennylane-close">✕</button>
       </div>
       <div class="algo-result-body">
+        <div style="font-size:11px;color:var(--text-dim);line-height:1.6;margin-bottom:10px">
+          El circuito que has construido se reconstruye con la <b style="color:var(--accent2)">librería PennyLane de Python</b>
+          (estándar de la industria para computación cuántica) en el servidor, se dibuja y se verifica que produce
+          exactamente el mismo estado que nuestro motor.
+        </div>
         <pre id="pennylane-code" class="qasm-code"></pre>
       </div>
     </div>
