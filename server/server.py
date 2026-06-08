@@ -126,7 +126,7 @@ logger.info(f"System RAM: {total_ram_gb:.1f} GB total, {usable_ram_gb:.1f} GB us
 logger.info(f"Auto-detected MAX_QUBITS = {MAX_QUBITS} (state vector ~{max_state_mb:.0f} MB)")
 
 # Global quantum state
-qc = QuantumState(n_qubits=8)
+qc = QuantumState(n_qubits=10)
 active_websockets: Set[WebSocket] = set()
 
 # ─── WebSocket broadcast ──────────────────────────────────────────────────────
@@ -329,11 +329,15 @@ async def run_enterprise(op: EnterpriseOp, username: str = Depends(require_auth)
 @app.get("/api/enterprise/list")
 async def list_enterprise(username: str = Depends(require_auth)):
     return [
-        {"name": "portfolio", "label": "Optimización de Cartera", "industry": "Finanzas",        "icon": "📈", "description": "Selección óptima de activos (QAOA)"},
-        {"name": "maxcut",    "label": "Optimización de Red",     "industry": "Logística",        "icon": "🚚", "description": "Particiona redes y rutas (Max-Cut)"},
-        {"name": "bb84",      "label": "Clave Cuántica (BB84)",   "industry": "Ciberseguridad",   "icon": "🔐", "description": "Comunicación inviolable + detección de espías"},
-        {"name": "qrng",      "label": "Claves Aleatorias (QRNG)","industry": "Ciberseguridad",   "icon": "🎲", "description": "Genera claves AES-256 verdaderamente aleatorias"},
-        {"name": "vqe_h2",    "label": "Simulación Molecular",    "industry": "Química / Farma",  "icon": "🧬", "description": "Energía molecular del H₂ (VQE)"},
+        {"name": "portfolio",       "label": "Optimización de Cartera", "industry": "Finanzas",        "icon": "$",  "description": "Selecciona los mejores activos según tus rendimientos y riesgos"},
+        {"name": "knapsack",        "label": "Selección con Presupuesto","industry": "Operaciones",     "icon": "▦",  "description": "Elige proyectos de máximo valor dentro de tu presupuesto"},
+        {"name": "task_assignment", "label": "Asignación de Tareas",     "industry": "Operaciones",     "icon": "⊞",  "description": "Asigna equipos a tareas minimizando el coste total"},
+        {"name": "maxcut",          "label": "Optimización de Red",      "industry": "Logística",       "icon": "⋈",  "description": "Particiona redes y rutas según tus conexiones"},
+        {"name": "grover_search",   "label": "Búsqueda en Datos",        "industry": "Datos",           "icon": "⌕",  "description": "Encuentra un registro en datos sin índice (Grover)"},
+        {"name": "swap_similarity", "label": "Similitud / Fraude",       "industry": "IA y Riesgo",     "icon": "≈",  "description": "Compara dos perfiles para fraude o recomendación"},
+        {"name": "bb84",            "label": "Clave Cuántica (BB84)",    "industry": "Ciberseguridad",  "icon": "K",  "description": "Comunicación inviolable con detección de espías"},
+        {"name": "qrng",            "label": "Claves Aleatorias (QRNG)", "industry": "Ciberseguridad",  "icon": "#",  "description": "Genera claves AES-256 verdaderamente aleatorias"},
+        {"name": "vqe_h2",          "label": "Simulación Molecular",     "industry": "Química / Farma", "icon": "H₂", "description": "Energía molecular del H₂ a tu distancia de enlace (VQE)"},
     ]
 
 @app.post("/api/qubits/add")

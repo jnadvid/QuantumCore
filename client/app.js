@@ -574,7 +574,7 @@ function handleWsMessage(msg) {
   else if (msg.type==='enterprise_run') {
     showEnterpriseResult(msg.data.result);
     const r=msg.data.result||{};
-    log(`⚡ ${r.solution||msg.data.name} [${r.industry||''}]`,'algo');
+    log(`${r.solution||msg.data.name} [${r.industry||''}]`,'algo');
   }
   else if (msg.type==='sample_result') { renderSampleHistogram(msg.data); }
   else if (msg.type==='noise_set') {
@@ -969,6 +969,7 @@ function renderHeader() {
   document.getElementById('norm-display').textContent = '‖ψ‖ = '+(state.norm||1).toFixed(5);
   document.getElementById('circuit-depth-display').textContent = 'depth: '+(state.circuit||[]).length;
   document.getElementById('bloch-count').textContent = state.n_qubits;
+  const hq = document.getElementById('hub-qubits'); if (hq) hq.textContent = state.n_qubits;
 }
 
 // ─── Qubit Grid ─────────────────────────────────────────────────────────────
@@ -1539,6 +1540,7 @@ function industryColor(industry) {
   return { c: '#00c8ff', glow: 'rgba(0,200,255,0.14)' };
 }
 
+// Compact card for the left sidebar quick-access list
 function renderEnterprise() {
   const list = document.getElementById('enterprise-list');
   if (!list) return;
@@ -1549,33 +1551,276 @@ function renderEnterprise() {
     card.className = 'ent-card';
     card.style.setProperty('--ind-color', col.c);
     card.innerHTML = `
-      <div class="ent-card-icon">${sol.icon || '⚡'}</div>
+      <div class="ent-card-icon">${escHtml(sol.icon || '·')}</div>
       <div class="ent-card-text">
         <span class="ent-card-industry">${escHtml(sol.industry)}</span>
         <span class="ent-card-name">${escHtml(sol.label)}</span>
         <span class="ent-card-desc">${escHtml(sol.description || '')}</span>
       </div>
       <span class="ent-card-go">›</span>`;
-    card.addEventListener('click', () => runEnterprise(sol));
+    card.addEventListener('click', () => openUsecaseForm(sol));
     list.appendChild(card);
   });
 }
 
-async function runEnterprise(sol) {
-  log(`⚡ Ejecutando solución: ${sol.label} (${sol.industry})...`, 'algo');
+// Large cards in the central workspace hub
+function renderUsecaseHub() {
+  const grid = document.getElementById('usecase-cards');
+  if (!grid) return;
+  grid.innerHTML = '';
+  enterpriseSolutions.forEach(sol => {
+    const col = industryColor(sol.industry);
+    const card = document.createElement('div');
+    card.className = 'uc-card';
+    card.style.setProperty('--ind-color', col.c);
+    card.innerHTML = `
+      <div class="uc-card-top">
+        <div class="uc-card-mono">${escHtml(sol.icon || '·')}</div>
+        <div>
+          <div class="uc-card-industry">${escHtml(sol.industry)}</div>
+          <div class="uc-card-name">${escHtml(sol.label)}</div>
+        </div>
+      </div>
+      <div class="uc-card-desc">${escHtml(sol.description || '')}</div>
+      <div class="uc-card-cta">Introducir datos →</div>`;
+    card.addEventListener('click', () => openUsecaseForm(sol));
+    grid.appendChild(card);
+  });
+}
+
+// ─── Use-case input forms (real user data) ────────────────────────────────────
+
+const FORM_SCHEMAS = {
+  portfolio: {
+    intro: 'Introduce tus activos con su rendimiento esperado (%) y su riesgo/volatilidad (%). El ordenador cuántico evaluará todas las combinaciones y elegirá la cartera óptima.',
+    fields: [
+      { type: 'rows', key: 'assets', addLabel: '+ Añadir activo',
+        columns: [{ key: 'name', label: 'Activo', type: 'text', w: '1.4fr' },
+                  { key: 'ret', label: 'Rendim. %', type: 'number', w: '1fr' },
+                  { key: 'vol', label: 'Riesgo %', type: 'number', w: '1fr' }],
+        def: [{ name: 'BBVA', ret: 12, vol: 18 }, { name: 'Iberdrola', ret: 8, vol: 10 },
+              { name: 'Santander', ret: 15, vol: 28 }, { name: 'Inditex', ret: 10, vol: 14 }] },
+      { type: 'number', key: 'budget', label: 'Nº de activos a elegir', def: 2, min: 1, max: 8 },
+      { type: 'number', key: 'risk', label: 'Aversión al riesgo (0-10)', def: 3, min: 0, max: 10, step: 0.5 },
+    ]
+  },
+  knapsack: {
+    intro: 'Lista tus opciones (proyectos, inversiones, productos) con su valor y su coste. Fija el presupuesto disponible y el ordenador cuántico elegirá el subconjunto de mayor valor que cabe.',
+    fields: [
+      { type: 'rows', key: 'items', addLabel: '+ Añadir opción',
+        columns: [{ key: 'name', label: 'Opción', type: 'text', w: '1.6fr' },
+                  { key: 'value', label: 'Valor', type: 'number', w: '1fr' },
+                  { key: 'weight', label: 'Coste', type: 'number', w: '1fr' }],
+        def: [{ name: 'Web corporativa', value: 50, weight: 20 }, { name: 'CRM', value: 80, weight: 40 },
+              { name: 'App móvil', value: 70, weight: 30 }, { name: 'BI / Analítica', value: 40, weight: 10 }] },
+      { type: 'number', key: 'capacity', label: 'Presupuesto / capacidad total', def: 50, min: 1 },
+    ]
+  },
+  task_assignment: {
+    intro: 'Introduce el coste (horas, € o esfuerzo) de cada equipo al realizar cada tarea. El ordenador cuántico encuentra la asignación que minimiza el coste total (un equipo por tarea).',
+    fields: [
+      { type: 'matrix', key: 'cost_matrix', size: 3,
+        rowLabels: ['Equipo A', 'Equipo B', 'Equipo C'], colLabels: ['Tarea 1', 'Tarea 2', 'Tarea 3'],
+        def: [[9, 2, 7], [6, 4, 3], [5, 8, 1]] },
+    ]
+  },
+  maxcut: {
+    intro: 'Define el número de nodos (almacenes, servidores, antenas…) y sus conexiones. El ordenador cuántico los divide en dos grupos maximizando los enlaces entre grupos.',
+    fields: [
+      { type: 'number', key: 'n', label: 'Nº de nodos', def: 5, min: 3, max: 9 },
+      { type: 'list', key: 'edges', outKey: 'edges', mode: 'edges', wide: true,
+        label: 'Conexiones (una por línea, formato  0-1)', def: '0-1\n1-2\n2-3\n3-4\n4-0\n0-2' },
+    ]
+  },
+  grover_search: {
+    intro: 'Pega tu lista de registros (uno por línea) e indica la posición a localizar. Grover la encuentra en √N pasos en lugar de N.',
+    fields: [
+      { type: 'list', key: 'items', mode: 'lines', wide: true, label: 'Registros (uno por línea)',
+        def: 'Cliente_001\nCliente_002\nCliente_003\nCliente_004\nCliente_005\nCliente_006\nCliente_007\nCliente_008' },
+      { type: 'number', key: 'target', label: 'Posición a buscar (0 = primero)', def: 3, min: 0 },
+    ]
+  },
+  swap_similarity: {
+    intro: 'Codifica dos perfiles como un valor 0-100 (p. ej. puntuación de riesgo, vector de características). El SWAP Test mide su similitud en una sola medición cuántica.',
+    fields: [
+      { type: 'text', key: 'label_a', label: 'Nombre del perfil A', def: 'Transacción' },
+      { type: 'number', key: 'a', label: 'Valor perfil A (0-100)', def: 30, min: 0, max: 100 },
+      { type: 'text', key: 'label_b', label: 'Nombre del perfil B', def: 'Patrón normal' },
+      { type: 'number', key: 'b', label: 'Valor perfil B (0-100)', def: 35, min: 0, max: 100 },
+    ]
+  },
+  bb84: {
+    intro: 'Genera una clave secreta compartida sobre qubits. Activa el espía para comprobar cómo la física cuántica detecta cualquier intento de interceptación.',
+    fields: [
+      { type: 'number', key: 'n', label: 'Nº de qubits (longitud)', def: 24, min: 8, max: 64 },
+      { type: 'checkbox', key: 'eve', label: 'Simular espía (Eve) interceptando el canal', def: true },
+    ]
+  },
+  qrng: {
+    intro: 'Genera una clave criptográfica de 256 bits a partir del colapso cuántico — aleatoriedad verdadera, imposible de reproducir por un ordenador clásico. Pulsa para generar.',
+    fields: []
+  },
+  vqe_h2: {
+    intro: 'Introduce la distancia de enlace entre los dos átomos de hidrógeno (en Ångström). El VQE calcula la energía del estado fundamental de la molécula minimizando ⟨ψ|H|ψ⟩.',
+    fields: [
+      { type: 'number', key: 'bond_length', label: 'Distancia de enlace H–H (Å)', def: 0.7414, min: 0.3, max: 2.5, step: 0.01 },
+    ]
+  },
+};
+
+function fieldHTML(f) {
+  if (f.type === 'text' || f.type === 'number') {
+    const attrs = `${f.min != null ? `min="${f.min}"` : ''} ${f.max != null ? `max="${f.max}"` : ''} ${f.step != null ? `step="${f.step}"` : ''}`;
+    return `<div class="uf-field"><label>${escHtml(f.label)}</label>
+      <input class="uf-input" data-key="${f.key}" type="${f.type}" value="${f.def}" ${attrs}></div>`;
+  }
+  if (f.type === 'checkbox') {
+    return `<div class="uf-field uf-wide uf-check"><label><input type="checkbox" data-key="${f.key}" ${f.def ? 'checked' : ''}> ${escHtml(f.label)}</label></div>`;
+  }
+  if (f.type === 'list') {
+    return `<div class="uf-field uf-wide"><label>${escHtml(f.label)}</label>
+      <textarea class="uf-input uf-area" data-key="${f.key}" data-mode="${f.mode || 'lines'}" data-outkey="${f.outKey || f.key}" rows="6">${escHtml(f.def)}</textarea></div>`;
+  }
+  if (f.type === 'rows') {
+    const cols = f.columns.map(c => c.w || '1fr').join(' ') + ' 28px';
+    const head = `<div class="uf-rows-head" style="grid-template-columns:${cols}">` +
+      f.columns.map(c => `<span>${escHtml(c.label)}</span>`).join('') + `<span></span></div>`;
+    const rows = f.def.map(r => rowHTML(f, r)).join('');
+    return `<div class="uf-field uf-wide"><label>Datos</label>
+      <div class="uf-rows" data-key="${f.key}" data-cols="${escHtml(cols)}">${head}${rows}</div>
+      <button type="button" class="uf-add" data-add="${f.key}">${escHtml(f.addLabel || '+ Añadir')}</button></div>`;
+  }
+  if (f.type === 'matrix') {
+    const s = f.size;
+    let html = `<div class="uf-field uf-wide"><label>Matriz de costes</label><div class="uf-matrix" data-key="${f.key}" data-size="${s}"><table><tr><th></th>`;
+    for (let j = 0; j < s; j++) html += `<th><input class="uf-input uf-label-in" data-collabel="${j}" value="${escHtml(f.colLabels[j] || ('T' + j))}"></th>`;
+    html += `</tr>`;
+    for (let i = 0; i < s; i++) {
+      html += `<tr><th><input class="uf-input uf-label-in" data-rowlabel="${i}" value="${escHtml(f.rowLabels[i] || ('E' + i))}"></th>`;
+      for (let j = 0; j < s; j++) html += `<td><input class="uf-input" type="number" data-cell="${i}-${j}" value="${f.def[i][j]}"></td>`;
+      html += `</tr>`;
+    }
+    return html + `</table></div></div>`;
+  }
+  return '';
+}
+
+function rowHTML(f, r) {
+  const cols = f.columns.map(c => c.w || '1fr').join(' ') + ' 28px';
+  return `<div class="uf-row" style="grid-template-columns:${cols}">` +
+    f.columns.map(c => `<input class="uf-input" data-col="${c.key}" type="${c.type}" value="${escHtml(String(r[c.key] != null ? r[c.key] : ''))}">`).join('') +
+    `<span class="uf-row-del" title="Eliminar">✕</span></div>`;
+}
+
+let selectedUsecase = null;
+
+function openUsecaseForm(sol) {
+  selectedUsecase = sol;
+  const schema = FORM_SCHEMAS[sol.name] || { intro: sol.description, fields: [] };
+  const col = industryColor(sol.industry);
+  const form = document.getElementById('usecase-form');
+  form.style.setProperty('--ind-color', col.c);
+  form.innerHTML = `
+    <div class="uf-head">
+      <div class="uf-mono">${escHtml(sol.icon || '·')}</div>
+      <div class="uf-head-titles">
+        <div class="uf-head-industry">${escHtml(sol.industry)}</div>
+        <div class="uf-head-name">${escHtml(sol.label)}</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" id="uf-back">← Volver</button>
+    </div>
+    <div class="uf-intro">${escHtml(schema.intro || '')}</div>
+    <div class="uf-grid">${schema.fields.map(fieldHTML).join('')}</div>
+    <div class="uf-actions">
+      <button class="uf-solve" id="uf-solve">Resolver con computación cuántica</button>
+    </div>`;
+
+  // wire repeatable-row add/remove
+  form.querySelectorAll('[data-add]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const f = schema.fields.find(x => x.key === btn.dataset.add);
+      const cont = form.querySelector(`.uf-rows[data-key="${f.key}"]`);
+      const blank = {}; f.columns.forEach(c => blank[c.key] = c.type === 'number' ? 0 : '');
+      cont.insertAdjacentHTML('beforeend', rowHTML(f, blank));
+      wireRowDelete(cont);
+    });
+  });
+  form.querySelectorAll('.uf-rows').forEach(wireRowDelete);
+
+  document.getElementById('uf-back').addEventListener('click', closeUsecaseForm);
+  document.getElementById('uf-solve').addEventListener('click', () => {
+    const params = collectParams(schema, form);
+    runEnterprise(sol, params);
+  });
+
+  document.getElementById('usecase-cards').classList.add('hidden');
+  form.classList.remove('hidden');
+  document.querySelector('.main-area').scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function wireRowDelete(cont) {
+  cont.querySelectorAll('.uf-row-del').forEach(el => {
+    el.onclick = () => { if (cont.querySelectorAll('.uf-row').length > 1) el.parentElement.remove(); };
+  });
+}
+
+function closeUsecaseForm() {
+  document.getElementById('usecase-form').classList.add('hidden');
+  document.getElementById('usecase-cards').classList.remove('hidden');
+}
+
+function collectParams(schema, root) {
+  const p = {};
+  schema.fields.forEach(f => {
+    if (f.type === 'rows') {
+      const cont = root.querySelector(`.uf-rows[data-key="${f.key}"]`);
+      p[f.key] = [...cont.querySelectorAll('.uf-row')].map(r => {
+        const o = {};
+        f.columns.forEach(c => {
+          const el = r.querySelector(`[data-col="${c.key}"]`);
+          o[c.key] = c.type === 'number' ? (parseFloat(el.value) || 0) : el.value;
+        });
+        return o;
+      });
+    } else if (f.type === 'matrix') {
+      const cont = root.querySelector(`.uf-matrix[data-key="${f.key}"]`);
+      const s = parseInt(cont.dataset.size);
+      const mat = [];
+      for (let i = 0; i < s; i++) { const row = []; for (let j = 0; j < s; j++) row.push(parseFloat(cont.querySelector(`[data-cell="${i}-${j}"]`).value) || 0); mat.push(row); }
+      p[f.key] = mat;
+      p.workers = [...cont.querySelectorAll('[data-rowlabel]')].map(e => e.value);
+      p.tasks = [...cont.querySelectorAll('[data-collabel]')].map(e => e.value);
+    } else if (f.type === 'list') {
+      const el = root.querySelector(`[data-key="${f.key}"]`);
+      const lines = el.value.split('\n').map(s => s.trim()).filter(Boolean);
+      if ((el.dataset.mode || 'lines') === 'edges') {
+        p[el.dataset.outkey || 'edges'] = lines.map(l => l.split(/[-,\s]+/).map(x => parseInt(x)))
+          .filter(a => a.length >= 2 && !isNaN(a[0]) && !isNaN(a[1])).map(a => [a[0], a[1]]);
+      } else { p[f.key] = lines; }
+    } else if (f.type === 'checkbox') {
+      p[f.key] = root.querySelector(`[data-key="${f.key}"]`).checked;
+    } else {
+      const el = root.querySelector(`[data-key="${f.key}"]`);
+      if (el) p[f.key] = f.type === 'number' ? parseFloat(el.value) : el.value;
+    }
+  });
+  return p;
+}
+
+async function runEnterprise(sol, params = {}) {
+  log(`Ejecutando caso de uso: ${sol.label} (${sol.industry})...`, 'algo');
   try {
-    if (!sendWS({ cmd: 'enterprise', name: sol.name, params: {} })) {
-      const resp = await api('POST', '/api/enterprise', { name: sol.name, params: {} });
+    if (!sendWS({ cmd: 'enterprise', name: sol.name, params })) {
+      const resp = await api('POST', '/api/enterprise', { name: sol.name, params });
       if (resp && resp.result) showEnterpriseResult(resp.result);
     } else {
-      // WS path: result arrives via enterprise_run; fallback open after delay
       setTimeout(async () => {
         if (document.getElementById('enterprise-overlay').classList.contains('hidden')) {
-          try { const resp = await api('POST','/api/enterprise',{name:sol.name,params:{}}); showEnterpriseResult(resp.result); } catch(e){}
+          try { const resp = await api('POST', '/api/enterprise', { name: sol.name, params }); showEnterpriseResult(resp.result); } catch (e) {}
         }
-      }, 400);
+      }, 500);
     }
-  } catch (e) { log('Error en solución empresarial: ' + e.message, 'err'); }
+  } catch (e) { log('Error en el caso de uso: ' + e.message, 'err'); }
 }
 
 function showEnterpriseResult(r) {
@@ -1585,7 +1830,7 @@ function showEnterpriseResult(r) {
   modal.style.setProperty('--ind-color', col.c);
   modal.style.setProperty('--ind-glow', col.glow);
 
-  document.getElementById('ent-icon').textContent = r.icon || '⚡';
+  document.getElementById('ent-icon').textContent = r.icon || '·';
   document.getElementById('ent-industry').textContent = r.industry || '';
   document.getElementById('ent-name').textContent = r.solution || '';
 
@@ -1959,7 +2204,8 @@ async function init() {
   try {
     enterpriseSolutions = await apiFetch(API_BASE+'/api/enterprise/list').then(r=>r.json());
     renderEnterprise();
-    log(enterpriseSolutions.length+' soluciones empresariales cargadas','ok');
+    renderUsecaseHub();
+    log(enterpriseSolutions.length+' casos de uso cargados','ok');
   } catch(e) {}
   log('Conectando a '+WS_URL+'...','info');
   connectWS();

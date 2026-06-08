@@ -1062,19 +1062,38 @@ class QuantumState:
     def _bits_of(s: int, n: int) -> List[int]:
         return [(s >> (n - 1 - i)) & 1 for i in range(n)]
 
+    def _ensure_qubits(self, k: int):
+        """Grow the simulated register to at least k qubits (resets to |0…0⟩)."""
+        k = min(int(k), 22)
+        if k > self.n_qubits:
+            self.n_qubits = k
+            self.num_states = 2 ** k
+            self.enabled_qubits = [True] * k
+            self.state = np.zeros(self.num_states, dtype=complex)
+            self.state[0] = 1.0
+
     def run_enterprise(self, name: str, params: Dict = {}) -> Dict:
         self.reset()
         N = self.n_qubits
 
         # ── FINANZAS — Optimización de Cartera (QAOA / QUBO) ──────────────────
         if name == "portfolio":
-            n = max(3, min(int(params.get("n", min(N, 6))), N, 8))
-            rng = np.random.default_rng(params.get("seed"))
-            tickers = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "JPM"][:n]
-            mu = rng.uniform(0.05, 0.22, n)          # rendimiento anual esperado
-            vol = rng.uniform(0.12, 0.45, n)         # volatilidad
-            A = rng.uniform(-0.25, 0.6, (n, n)); corr = (A + A.T) / 2
-            np.fill_diagonal(corr, 1.0); corr = np.clip(corr, -0.9, 0.9); np.fill_diagonal(corr, 1.0)
+            user = params.get("assets")
+            if user:
+                names = [str(a.get("name", f"A{i}"))[:10] for i, a in enumerate(user)]
+                mu = np.array([float(a.get("ret", 0)) / 100.0 for a in user])
+                vol = np.array([max(float(a.get("vol", 1)), 0.1) / 100.0 for a in user])
+                n = len(names)
+                if n > min(N, 10):
+                    n = min(N, 10); names = names[:n]; mu = mu[:n]; vol = vol[:n]
+                corr = np.eye(n)   # activos independientes (datos reales del usuario)
+            else:
+                n = max(3, min(int(params.get("n", min(N, 6))), N, 8))
+                rng = np.random.default_rng(params.get("seed"))
+                names = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "JPM"][:n]
+                mu = rng.uniform(0.05, 0.22, n); vol = rng.uniform(0.12, 0.45, n)
+                A = rng.uniform(-0.25, 0.6, (n, n)); corr = (A + A.T) / 2
+                np.fill_diagonal(corr, 1.0); corr = np.clip(corr, -0.9, 0.9); np.fill_diagonal(corr, 1.0)
             budget = int(params.get("budget", max(2, n // 2)))
             risk_av = float(params.get("risk", 2.5))
 
@@ -1090,15 +1109,15 @@ class QuantumState:
             order = np.argsort(probs)[::-1][:8]
             best_s = int(max(order, key=lambda s: cost[s]))
             x = self._bits_of(best_s, n)
-            sel = [tickers[i] for i in range(n) if x[i]]
+            sel = [names[i] for i in range(n) if x[i]]
             p_ret = sum(mu[i] * x[i] for i in range(n))
             p_var = sum(vol[i] * vol[j] * corr[i][j] * x[i] * x[j] for i in range(n) for j in range(n))
             p_vol = math.sqrt(max(p_var, 1e-9))
             sharpe = (p_ret - 0.02) / p_vol if p_vol > 0 else 0.0
             return {
-                "enterprise": True, "icon": "📈", "industry": "Finanzas",
+                "enterprise": True, "icon": "$", "industry": "Finanzas",
                 "solution": "Optimización de Cartera",
-                "summary": f"QAOA selecciona la cartera óptima entre {2**n} combinaciones de {n} activos, maximizando rendimiento ajustado al riesgo (modelo de Markowitz como QUBO).",
+                "summary": f"QAOA evalúa las {2**n} combinaciones posibles de {n} activos y selecciona la cartera que maximiza el rendimiento ajustado al riesgo (modelo de Markowitz como QUBO).",
                 "highlight": {"label": "Cartera óptima", "value": "  ·  ".join(sel) or "—"},
                 "kpis": [
                     {"label": "Rendimiento esperado", "value": f"{p_ret*100:.1f}%"},
@@ -1106,20 +1125,25 @@ class QuantumState:
                     {"label": "Ratio de Sharpe", "value": f"{sharpe:.2f}"},
                     {"label": "Activos seleccionados", "value": f"{len(sel)} / {n}"},
                 ],
-                "rows": [{"label": tickers[i],
-                          "value": f"μ={mu[i]*100:.1f}%  σ={vol[i]*100:.1f}%",
+                "rows": [{"label": names[i],
+                          "value": f"rend={mu[i]*100:.1f}%  riesgo={vol[i]*100:.1f}%",
                           "tag": "EN CARTERA" if x[i] else ""} for i in range(n)],
                 "chart": {"type": "bar", "label": "Rendimiento esperado (%)",
-                          "labels": tickers, "values": [round(float(mu[i]*100), 1) for i in range(n)]},
-                "note": "Aplicación real: gestión de activos, fondos de inversión y asignación de capital. Empresas como Goldman Sachs y JPMorgan investigan QAOA para optimización de carteras.",
+                          "labels": names, "values": [round(float(mu[i]*100), 1) for i in range(n)]},
+                "note": "Aplicación real: gestión de activos y asignación de capital. Goldman Sachs y JPMorgan investigan QAOA para optimización de carteras.",
                 "fidelity": 1.0,
             }
 
         # ── LOGÍSTICA — Optimización de Redes (QAOA Max-Cut) ──────────────────
         elif name == "maxcut":
             n = max(3, min(int(params.get("n", min(N, 6))), N, 9))
-            rng = np.random.default_rng(params.get("seed"))
-            edges = [(i, j) for i in range(n) for j in range(i + 1, n) if rng.random() < 0.55]
+            user_edges = params.get("edges")
+            if user_edges:
+                edges = [(int(e[0]), int(e[1])) for e in user_edges
+                         if 0 <= int(e[0]) < n and 0 <= int(e[1]) < n and int(e[0]) != int(e[1])]
+            else:
+                rng = np.random.default_rng(params.get("seed"))
+                edges = [(i, j) for i in range(n) for j in range(i + 1, n) if rng.random() < 0.55]
             if not edges:
                 edges = [(i, i + 1) for i in range(n - 1)]
             cost = np.array([sum(1 for (i, j) in edges
@@ -1134,7 +1158,7 @@ class QuantumState:
             gA = [i for i in range(n) if x[i] == 0]
             gB = [i for i in range(n) if x[i] == 1]
             return {
-                "enterprise": True, "icon": "🚚", "industry": "Logística y Redes",
+                "enterprise": True, "icon": "⋈", "industry": "Logística y Redes",
                 "solution": "Optimización de Red (Max-Cut)",
                 "summary": f"QAOA particiona una red de {n} nodos y {len(edges)} conexiones en dos grupos maximizando los enlaces cortados — base de enrutamiento, diseño de redes y reparto de carga.",
                 "highlight": {"label": "Partición óptima",
@@ -1146,10 +1170,190 @@ class QuantumState:
                     {"label": "Nodos / Conexiones", "value": f"{n} / {len(edges)}"},
                 ],
                 "rows": [{"label": f"Conexión N{i} — N{j}",
-                          "value": "CORTADA ✂" if x[i] != x[j] else "interna",
+                          "value": "CORTADA" if x[i] != x[j] else "interna",
                           "tag": "CORTADA" if x[i] != x[j] else ""} for (i, j) in edges],
-                "note": "Aplicación real: optimización de rutas de reparto, diseño de redes de telecomunicaciones, asignación de frecuencias y balanceo de cargas. Volkswagen y DHL prueban QAOA para logística.",
+                "note": "Aplicación real: optimización de rutas de reparto, diseño de redes de telecomunicaciones y balanceo de cargas. Volkswagen y DHL prueban QAOA para logística.",
                 "fidelity": round(ratio, 4),
+            }
+
+        # ── OPERACIONES — Mochila / Selección con Presupuesto (QUBO) ──────────
+        elif name == "knapsack":
+            user = params.get("items")
+            if user:
+                names = [str(it.get("name", f"I{i}"))[:12] for i, it in enumerate(user)]
+                values = [float(it.get("value", 0)) for it in user]
+                weights = [float(it.get("weight", 0)) for it in user]
+            else:
+                names = ["Proyecto A", "Proyecto B", "Proyecto C", "Proyecto D", "Proyecto E"]
+                values = [60, 100, 120, 80, 90]; weights = [10, 20, 30, 15, 25]
+            n = len(names)
+            if n > min(N, 12):
+                n = min(N, 12); names, values, weights = names[:n], values[:n], weights[:n]
+            capacity = float(params.get("capacity", sum(weights) * 0.5))
+            P = (max(values) + 1) * 2.0
+            cost = np.zeros(2 ** n)
+            for s in range(2 ** n):
+                x = self._bits_of(s, n)
+                val = sum(values[i] * x[i] for i in range(n))
+                wsum = sum(weights[i] * x[i] for i in range(n))
+                over = max(0.0, wsum - capacity)
+                cost[s] = val - P * over * over
+            probs, _, _ = self._qaoa_solve(cost, n, maximize=True)
+            order = np.argsort(probs)[::-1][:10]
+            best_s = int(max(order, key=lambda s: cost[s]))
+            x = self._bits_of(best_s, n)
+            sel = [names[i] for i in range(n) if x[i]]
+            tot_val = sum(values[i] * x[i] for i in range(n))
+            tot_w = sum(weights[i] * x[i] for i in range(n))
+            feasible = tot_w <= capacity
+            return {
+                "enterprise": True, "icon": "▦", "industry": "Operaciones",
+                "solution": "Selección Óptima con Presupuesto",
+                "summary": f"Problema de la mochila resuelto como QUBO: de {n} opciones, selecciona el subconjunto de mayor valor sin superar la capacidad/presupuesto disponible.",
+                "highlight": {"label": "Selección óptima", "value": "  ·  ".join(sel) or "(ninguna)"},
+                "kpis": [
+                    {"label": "Valor total", "value": f"{tot_val:g}"},
+                    {"label": "Coste / peso usado", "value": f"{tot_w:g} / {capacity:g}"},
+                    {"label": "Elementos", "value": f"{len(sel)} / {n}"},
+                    {"label": "Viable", "value": ("SÍ" if feasible else "NO")},
+                ],
+                "rows": [{"label": names[i],
+                          "value": f"valor={values[i]:g}  coste={weights[i]:g}",
+                          "tag": "ELEGIDO" if x[i] else ""} for i in range(n)],
+                "chart": {"type": "bar", "label": "Valor por elemento",
+                          "labels": names, "values": [round(float(v), 2) for v in values]},
+                "note": "Aplicación real: selección de proyectos de inversión, planificación de producción, asignación de presupuesto y gestión de carteras de I+D.",
+                "fidelity": 1.0 if feasible else 0.5,
+            }
+
+        # ── OPERACIONES / RRHH — Asignación de Tareas (QUBO one-hot) ──────────
+        elif name == "task_assignment":
+            C = params.get("cost_matrix")
+            workers = params.get("workers")
+            tasks = params.get("tasks")
+            if not C:
+                C = [[9, 2, 7], [6, 4, 3], [5, 8, 1]]
+            m = min(len(C), 3)
+            C = [row[:m] for row in C[:m]]
+            workers = (workers or ["Equipo A", "Equipo B", "Equipo C"])[:m]
+            tasks = (tasks or ["Tarea 1", "Tarea 2", "Tarea 3"])[:m]
+            nbits = m * m
+            if nbits > N:
+                self._ensure_qubits(nbits); N = self.n_qubits   # crece el registro automáticamente
+            maxc = max(max(row) for row in C)
+            P = (maxc + 1) * 2.0
+            cost = np.zeros(2 ** nbits)
+            for s in range(2 ** nbits):
+                x = self._bits_of(s, nbits)
+                base = sum(C[w][t] * x[w * m + t] for w in range(m) for t in range(m))
+                rowpen = sum((sum(x[w * m + t] for t in range(m)) - 1) ** 2 for w in range(m))
+                colpen = sum((sum(x[w * m + t] for w in range(m)) - 1) ** 2 for t in range(m))
+                cost[s] = base + P * (rowpen + colpen)
+            probs, _, _ = self._qaoa_solve(cost, nbits, maximize=False)
+            order = np.argsort(probs)[::-1][:12]
+            best_s = int(min(order, key=lambda s: cost[s]))
+            x = self._bits_of(best_s, nbits)
+            assign = {}
+            for w in range(m):
+                ts = [t for t in range(m) if x[w * m + t]]
+                assign[w] = ts[0] if len(ts) == 1 else None
+            valid = (sorted(v for v in assign.values() if v is not None) == list(range(m)) and
+                     all(v is not None for v in assign.values()))
+            total = sum(C[w][assign[w]] for w in range(m) if assign[w] is not None)
+            rows = []
+            for w in range(m):
+                t = assign[w]
+                rows.append({"label": workers[w],
+                             "value": (f"→ {tasks[t]}  (coste {C[w][t]})" if t is not None else "→ sin asignar"),
+                             "tag": "ÓPTIMO" if t is not None else ""})
+            return {
+                "enterprise": True, "icon": "⊞", "industry": "Operaciones / RRHH",
+                "solution": "Asignación Óptima de Tareas",
+                "summary": f"Asigna {m} equipos a {m} tareas minimizando el coste total. Codificado como QUBO con restricciones one-hot (cada equipo una tarea, cada tarea un equipo).",
+                "highlight": {"label": "Coste total mínimo", "value": (f"{total:g} unidades" if valid else "solución parcial — añade más qubits o reintenta")},
+                "kpis": [
+                    {"label": "Equipos / Tareas", "value": f"{m} / {m}"},
+                    {"label": "Coste total", "value": f"{total:g}"},
+                    {"label": "Asignación válida", "value": ("SÍ" if valid else "NO")},
+                    {"label": "Qubits usados", "value": str(nbits)},
+                ],
+                "rows": rows,
+                "note": "Aplicación real: asignación de personal a proyectos, máquinas a pedidos, vehículos a rutas y turnos de trabajo.",
+                "fidelity": 1.0 if valid else 0.4,
+            }
+
+        # ── DATOS — Búsqueda Cuántica (Grover) ────────────────────────────────
+        elif name == "grover_search":
+            items = params.get("items") or ["Cliente_001", "Cliente_002", "Cliente_003",
+                                            "Cliente_004", "Cliente_005", "Cliente_006",
+                                            "Cliente_007", "Cliente_008"]
+            target_idx = int(params.get("target", 0))
+            if target_idx < 0 or target_idx >= len(items):
+                target_idx = 0
+            k = max(2, min(int(math.ceil(math.log2(max(len(items), 2)))), N, 8))
+            N_states = 2 ** k
+            rest = N - k
+            full_target = target_idx << rest
+            for i in range(k):
+                self.apply_gate("H", [i])
+            iters = max(1, min(round(math.pi / 4 * math.sqrt(N_states)), 12))
+            for _ in range(iters):
+                self._grover_oracle(k, full_target)
+                self._grover_diffusion(k, rest)
+            probs = np.abs(self.state) ** 2
+            prob_target = float(probs[full_target])
+            return {
+                "enterprise": True, "icon": "⌕", "industry": "Datos y Búsqueda",
+                "solution": "Búsqueda Cuántica (Grover)",
+                "summary": f"Grover localiza un registro en una base de datos NO estructurada de {len(items)} elementos en √N pasos, frente a los N del peor caso clásico.",
+                "highlight": {"label": "Registro encontrado", "value": f"#{target_idx} → {items[target_idx]}"},
+                "kpis": [
+                    {"label": "Base de datos", "value": f"{len(items)} registros"},
+                    {"label": "Iteraciones Grover", "value": str(iters)},
+                    {"label": "Probabilidad de éxito", "value": f"{prob_target*100:.0f}%"},
+                    {"label": "Ventaja", "value": f"√{N_states}≈{math.sqrt(N_states):.0f} vs {N_states}"},
+                ],
+                "rows": [{"label": f"#{i}  {items[i]}",
+                          "value": f"{float(probs[i<<rest])*100:.0f}%",
+                          "tag": "OBJETIVO" if i == target_idx else ""} for i in range(min(len(items), 12))],
+                "note": "Aplicación real: búsqueda en bases de datos sin índice, criptoanálisis, resolución de problemas SAT y minería de datos.",
+                "fidelity": round(prob_target, 4),
+            }
+
+        # ── IA / RIESGO — Similitud Cuántica (SWAP Test) ──────────────────────
+        elif name == "swap_similarity":
+            if N < 3:
+                return {"error": "Se necesitan al menos 3 qubits"}
+            a = float(params.get("a", 30)); b = float(params.get("b", 70))
+            label_a = str(params.get("label_a", "Perfil A"))[:20]
+            label_b = str(params.get("label_b", "Perfil B"))[:20]
+            theta_A = max(0.0, min(a, 100)) / 100.0 * math.pi
+            theta_B = max(0.0, min(b, 100)) / 100.0 * math.pi
+            self.apply_gate("RY", [1], [theta_A])
+            self.apply_gate("RY", [2], [theta_B])
+            self.apply_gate("H", [0])
+            self.apply_gate("CSWAP", [0, 1, 2])
+            self.apply_gate("H", [0])
+            overlap_sq = math.cos((theta_A - theta_B) / 2) ** 2
+            similar = overlap_sq > 0.85
+            return {
+                "enterprise": True, "icon": "≈", "industry": "IA y Análisis de Riesgo",
+                "solution": "Similitud Cuántica (SWAP Test)",
+                "summary": "El SWAP Test mide el solapamiento entre dos perfiles codificados como estados cuánticos en una sola medición — núcleo de motores de recomendación, detección de fraude y clasificación (QML).",
+                "highlight": {"label": "Similitud entre perfiles", "value": f"{overlap_sq*100:.1f}%  →  {'COINCIDENCIA' if similar else 'PERFILES DISTINTOS'}"},
+                "kpis": [
+                    {"label": label_a, "value": f"{a:.0f}/100"},
+                    {"label": label_b, "value": f"{b:.0f}/100"},
+                    {"label": "|⟨A|B⟩|²", "value": f"{overlap_sq*100:.1f}%"},
+                    {"label": "Veredicto", "value": ("Similar" if similar else "Distinto")},
+                ],
+                "rows": [
+                    {"label": label_a, "value": f"codificado en RY({theta_A:.2f})"},
+                    {"label": label_b, "value": f"codificado en RY({theta_B:.2f})"},
+                    {"label": "Umbral de coincidencia", "value": "85%"},
+                ],
+                "note": "Aplicación real: detección de fraude (transacción vs patrón normal), recomendación de productos, deduplicación de clientes y clasificación de documentos.",
+                "fidelity": round(overlap_sq, 4),
             }
 
         # ── CIBERSEGURIDAD — Distribución Cuántica de Claves (BB84) ───────────
@@ -1181,12 +1385,12 @@ class QuantumState:
             final_bits = key_bits[len(key_bits) // 2:]
             key_hex = hex(int("".join(map(str, final_bits)) or "0", 2))[2:].upper() if final_bits else "—"
             return {
-                "enterprise": True, "icon": "🔐", "industry": "Ciberseguridad",
+                "enterprise": True, "icon": "K", "industry": "Ciberseguridad",
                 "solution": "Distribución Cuántica de Claves (BB84)",
                 "summary": f"Alice y Bob generan una clave secreta compartida sobre {nbits} qubits. Cualquier espía (Eve) altera el estado cuántico y eleva la tasa de error (QBER), siendo detectado por las leyes de la física.",
                 "highlight": {"label": "Veredicto de seguridad",
-                              "value": ("✓ CANAL SEGURO — sin espías detectados" if secure
-                                        else "✗ ¡ESPÍA DETECTADO! — clave descartada")},
+                              "value": ("CANAL SEGURO — sin espías detectados" if secure
+                                        else "ESPÍA DETECTADO — clave descartada")},
                 "kpis": [
                     {"label": "Qubits enviados", "value": str(nbits)},
                     {"label": "Clave depurada", "value": f"{sift} bits"},
@@ -1207,16 +1411,19 @@ class QuantumState:
         elif name == "vqe_h2":
             I2 = np.eye(2, dtype=complex)
             X, Y, Z = GATES["X"], GATES["Y"], GATES["Z"]
+            R = float(params.get("bond_length", 0.7414))   # longitud de enlace (Å)
+            R = max(0.3, min(R, 2.5))
             g0, g1, g2, g3, g4, g5 = -0.4804, 0.3435, -0.4347, 0.5716, 0.0910, 0.0910
+            nuc = 0.529177 / R   # repulsión nuclear (Hartree) — depende de los datos del usuario
             H = (g0 * np.eye(4) + g1 * np.kron(Z, I2) + g2 * np.kron(I2, Z) +
                  g3 * np.kron(Z, Z) + g4 * np.kron(Y, Y) + g5 * np.kron(X, X))
-            exact = float(np.min(np.linalg.eigvalsh(H).real))
+            exact = float(np.min(np.linalg.eigvalsh(H).real)) + nuc
             thetas = np.linspace(-math.pi, math.pi, 121)
             energies = []
             for th in thetas:
                 psi = np.zeros(4, dtype=complex)
                 psi[1] = math.cos(th); psi[2] = math.sin(th)   # singlet subspace |01>,|10>
-                energies.append(float(np.real(psi.conj() @ H @ psi)))
+                energies.append(float(np.real(psi.conj() @ H @ psi)) + nuc)
             imin = int(np.argmin(energies)); e_vqe = energies[imin]; th_opt = float(thetas[imin])
             err = abs(e_vqe - exact)
             # embed optimal molecular state on qubits 0,1 for visualization
@@ -1228,16 +1435,16 @@ class QuantumState:
             # downsample landscape for chart
             step = max(1, len(thetas) // 30)
             return {
-                "enterprise": True, "icon": "🧬", "industry": "Química y Farmacéutica",
+                "enterprise": True, "icon": "H₂", "industry": "Química y Farmacéutica",
                 "solution": "Simulación Molecular (VQE — H₂)",
-                "summary": "El Variational Quantum Eigensolver calcula la energía del estado fundamental de la molécula de hidrógeno minimizando ⟨ψ(θ)|H|ψ(θ)⟩ — la base del diseño de fármacos y nuevos materiales.",
+                "summary": f"El Variational Quantum Eigensolver calcula la energía del estado fundamental de la molécula de H₂ a una distancia de enlace de {R:.3f} Å, minimizando ⟨ψ(θ)|H|ψ(θ)⟩ — base del diseño de fármacos y materiales.",
                 "highlight": {"label": "Energía del estado fundamental",
-                              "value": f"{e_vqe:.5f} Hartree  (θ óptimo = {th_opt:.3f} rad)"},
+                              "value": f"{e_vqe:.5f} Hartree  (distancia {R:.3f} Å)"},
                 "kpis": [
                     {"label": "Energía VQE", "value": f"{e_vqe:.4f} Ha"},
                     {"label": "Energía exacta (FCI)", "value": f"{exact:.4f} Ha"},
                     {"label": "Error", "value": f"{err:.2e} Ha"},
-                    {"label": "Precisión química", "value": ("✓ ALCANZADA" if err < 1.6e-3 else "no")},
+                    {"label": "Precisión química", "value": ("ALCANZADA" if err < 1.6e-3 else "no")},
                 ],
                 "chart": {"type": "line", "label": "Energía ⟨H⟩ (Hartree) vs θ",
                           "labels": [f"{thetas[i]:.1f}" for i in range(0, len(thetas), step)],
@@ -1265,7 +1472,7 @@ class QuantumState:
             h = key_hex.lower()
             token = f"{h[0:8]}-{h[8:12]}-4{h[13:16]}-{h[16:20]}-{h[20:32]}"
             return {
-                "enterprise": True, "icon": "🎲", "industry": "Ciberseguridad",
+                "enterprise": True, "icon": "#", "industry": "Ciberseguridad",
                 "solution": "Generador Cuántico de Aleatoriedad (QRNG)",
                 "summary": "Genera claves criptográficas a partir del colapso cuántico — aleatoriedad verdadera e impredecible, imposible de reproducir por generadores pseudoaleatorios clásicos (deterministas).",
                 "highlight": {"label": "Clave AES-256 (hex)", "value": key_hex},

@@ -34,23 +34,28 @@ QC_USER=admin QC_PASSWORD=admin1234 python3 server.py
 
 ---
 
-## 🏢 Soluciones Empresariales (casos de uso reales)
+## 🏢 Casos de uso (con tus datos reales)
 
-Suite de aplicaciones cuánticas listas para demostrar valor real por industria.
-Cada una se ejecuta desde el panel **Soluciones Empresariales** y muestra KPIs,
-gráficas y el resultado óptimo.
+El **centro de trabajo** (panel central) muestra todos los casos de uso. Al elegir uno,
+introduces **tus propios datos** en un formulario y el ordenador cuántico simulado
+ejecuta el cálculo **real** sobre esos datos, devolviendo KPIs, gráficas y la solución óptima.
 
-| Solución | Industria | Tecnología | Qué resuelve |
-|----------|-----------|------------|--------------|
-| **Optimización de Cartera** | Finanzas | QAOA / QUBO (Markowitz) | Selecciona la cartera óptima maximizando rendimiento ajustado al riesgo |
-| **Optimización de Red (Max-Cut)** | Logística | QAOA | Particiona redes, rutas de reparto y telecomunicaciones |
-| **Clave Cuántica (BB84)** | Ciberseguridad | QKD | Genera claves inviolables y **detecta espías** por física cuántica |
-| **Claves Aleatorias (QRNG)** | Ciberseguridad | Colapso cuántico | Genera claves AES-256, contraseñas y tokens verdaderamente aleatorios |
-| **Simulación Molecular (VQE)** | Química / Farma | VQE | Calcula la energía del estado fundamental del H₂ (diseño de fármacos) |
+| Caso de uso | Industria | Tecnología | Datos que introduces |
+|----------|-----------|------------|----------------------|
+| **Optimización de Cartera** | Finanzas | QAOA / QUBO (Markowitz) | Activos con rendimiento y riesgo, nº a elegir |
+| **Selección con Presupuesto** | Operaciones | QUBO (mochila) | Opciones con valor/coste y presupuesto |
+| **Asignación de Tareas** | Operaciones / RRHH | QUBO one-hot | Matriz de costes equipo×tarea |
+| **Optimización de Red (Max-Cut)** | Logística | QAOA | Nodos y conexiones de tu red |
+| **Búsqueda en Datos (Grover)** | Datos | Grover | Lista de registros y objetivo |
+| **Similitud / Fraude (SWAP Test)** | IA y Riesgo | SWAP Test | Dos perfiles a comparar |
+| **Clave Cuántica (BB84)** | Ciberseguridad | QKD | Longitud de clave, espía sí/no |
+| **Claves Aleatorias (QRNG)** | Ciberseguridad | Colapso cuántico | — (genera AES-256/contraseña/token) |
+| **Simulación Molecular (VQE)** | Química / Farma | VQE | Distancia de enlace H–H (Å) |
 
-> Las soluciones usan algoritmos cuánticos correctos: el solver QAOA aplica la capa de
-> coste `e^{-iγC}` de forma exacta sobre el vector de estado, el VQE alcanza precisión
-> química (error < 1.6 mHa) y BB84 detecta intrusos cuando el QBER supera el 11 %.
+> Cálculos cuánticos reales: el solver QAOA aplica la capa de coste `e^{-iγC}` de forma
+> exacta sobre el vector de estado para cualquier QUBO; el VQE alcanza precisión química
+> (error < 1.6 mHa) y reproduce la energía del H₂ (−1.136 Ha a 0.74 Å); BB84 detecta
+> intrusos cuando el QBER supera el 11 %; Grover amplifica el registro objetivo en √N pasos.
 
 ## ✨ Novedades de esta versión
 

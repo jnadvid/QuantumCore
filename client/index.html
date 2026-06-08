@@ -137,10 +137,10 @@
     <!-- SIDEBAR LEFT: Controls -->
     <aside class="sidebar-left">
 
-      <!-- Enterprise Solutions -->
+      <!-- Use Cases -->
       <section class="panel panel-enterprise">
-        <h3 class="panel-title enterprise-title">Soluciones Empresariales</h3>
-        <div class="enterprise-sub">Casos de uso cuánticos reales por industria</div>
+        <h3 class="panel-title enterprise-title">Casos de uso</h3>
+        <div class="enterprise-sub">Resuelve problemas reales con tus datos</div>
         <div id="enterprise-list" class="enterprise-list"></div>
       </section>
 
@@ -186,6 +186,19 @@
 
     <!-- MAIN AREA -->
     <main class="main-area">
+
+      <!-- USE-CASE WORKSPACE / HUB -->
+      <section class="panel usecase-hub" id="usecase-hub">
+        <div class="hub-banner">
+          <div class="hub-banner-text">
+            <h2 class="hub-title">Plataforma de Computación Cuántica</h2>
+            <p class="hub-sub">Introduce tus datos reales y resuelve problemas de tu empresa con qubits simulados — cálculos cuánticos reales, no maquetas.</p>
+          </div>
+          <div class="hub-badge"><span id="hub-qubits">—</span> qubits</div>
+        </div>
+        <div id="usecase-cards" class="usecase-cards"></div>
+        <div id="usecase-form" class="usecase-form hidden"></div>
+      </section>
 
       <!-- Algorithm Info Panel (hidden by default) -->
       <section class="panel algo-info-panel hidden" id="algo-info-panel">
@@ -331,7 +344,7 @@
   <div id="enterprise-overlay" class="modal-overlay hidden">
     <div class="modal modal-enterprise">
       <div class="ent-header">
-        <div class="ent-icon" id="ent-icon">⚡</div>
+        <div class="ent-icon" id="ent-icon">·</div>
         <div class="ent-titles">
           <div class="ent-industry" id="ent-industry">Industria</div>
           <div class="ent-name" id="ent-name">Solución</div>
