@@ -920,7 +920,7 @@ function renderAll() {
   renderProbChart();
   renderStatevector();
   renderEntanglement();
-  renderCircuit();
+  renderCircuitDiagram();
   renderMetrics();
 }
 
@@ -969,7 +969,6 @@ function renderHeader() {
   document.getElementById('norm-display').textContent = '‖ψ‖ = '+(state.norm||1).toFixed(5);
   document.getElementById('circuit-depth-display').textContent = 'depth: '+(state.circuit||[]).length;
   document.getElementById('bloch-count').textContent = state.n_qubits;
-  const hq = document.getElementById('hub-qubits'); if (hq) hq.textContent = state.n_qubits;
 }
 
 // ─── Qubit Grid ─────────────────────────────────────────────────────────────
@@ -1083,7 +1082,7 @@ function renderBlochGrid() {
       wrap.className = 'bloch-wrap'; wrap.id = `bloch-${i}`;
       wrap.innerHTML = `
         <span class="bloch-label">Q${i}</span>
-        <svg class="bloch-sphere-svg" id="bsvg-${i}" viewBox="-1.2 -1.2 2.4 2.4" xmlns="http://www.w3.org/2000/svg"></svg>
+        <svg class="bloch-sphere-svg" id="bsvg-${i}" viewBox="-1.34 -1.34 2.68 2.68" xmlns="http://www.w3.org/2000/svg"></svg>
         <span class="bloch-prob" id="bprob-${i}"></span>`;
       grid.appendChild(wrap);
     });
@@ -1093,7 +1092,7 @@ function renderBlochGrid() {
       wrap.className = 'bloch-wrap'; wrap.id = `bloch-${i}`;
       wrap.innerHTML = `
         <span class="bloch-label">Q${i}</span>
-        <svg class="bloch-sphere-svg" id="bsvg-${i}" viewBox="-1.2 -1.2 2.4 2.4" xmlns="http://www.w3.org/2000/svg"></svg>
+        <svg class="bloch-sphere-svg" id="bsvg-${i}" viewBox="-1.34 -1.34 2.68 2.68" xmlns="http://www.w3.org/2000/svg"></svg>
         <span class="bloch-prob" id="bprob-${i}"></span>`;
       grid.appendChild(wrap);
     }
@@ -1102,6 +1101,7 @@ function renderBlochGrid() {
   }
 
   qubits.forEach((q,i) => drawBlochSphere(i, q));
+  applyBlochSize();
 }
 
 /* ─── 3D Bloch Sphere Renderer ─────────────────────────────────────────────
@@ -1125,112 +1125,65 @@ function drawBlochSphere(idx, q) {
   const b = q.bloch || { x: 0, y: 0, z: 1 };
   const p1 = q.p1 || 0;
   const measured = q.measured !== null && q.measured !== undefined;
+  const col = measured ? '#fbbf24'
+            : (p1 > 0.985 ? '#818cf8' : p1 < 0.015 ? '#38bdf8' : `hsl(${205 - p1 * 45},85%,64%)`);
 
-  // Color scheme based on state
-  const vecColor = measured
-    ? '#f59e0b'
-    : (p1 > 0.98 ? '#a78bfa' : p1 < 0.02 ? '#00c8ff' : `hsl(${190 + p1 * 80},80%,62%)`);
+  const P = (x, y, z) => { const p = bloch3D(x, y, z); return [p.sx, p.sy]; };
+  const fmt = ([x, y]) => `${x.toFixed(3)},${y.toFixed(3)}`;
+  const ringPts = (zc) => {
+    const r = Math.sqrt(Math.max(0, 1 - zc * zc)); const pts = [];
+    for (let a = 0; a <= 30; a++) { const t = a / 30 * 2 * Math.PI; pts.push(fmt(P(r * Math.cos(t), r * Math.sin(t), zc))); }
+    return pts.join(' ');
+  };
+  const meridianPts = (plane) => {
+    const pts = [];
+    for (let a = 0; a <= 30; a++) { const t = a / 30 * 2 * Math.PI, c = Math.cos(t), s = Math.sin(t); pts.push(fmt(plane === 'xz' ? P(c, 0, s) : P(0, c, s))); }
+    return pts.join(' ');
+  };
 
-  // --- Sphere body: radial gradient for 3D depth ---
-  const gradId = `bg${idx}`;
-  const gradOuter = measured ? 'rgba(245,158,11,0.07)' : 'rgba(0,200,255,0.06)';
-  const gradInner = measured ? 'rgba(245,158,11,0.02)' : 'rgba(0,200,255,0.02)';
-
-  // Axes endpoints in 3D
-  const axZ_top  = bloch3D( 0,  0,  1);
-  const axZ_bot  = bloch3D( 0,  0, -1);
-  const axX_pos  = bloch3D( 1,  0,  0);
-  const axX_neg  = bloch3D(-1,  0,  0);
-  const axY_pos  = bloch3D( 0,  1,  0);
-  const axY_neg  = bloch3D( 0, -1,  0);
-
-  // Equatorial ellipse (approximate): sample 32 points around the equator
-  const eqPts = [];
-  for (let a = 0; a <= 32; a++) {
-    const ang = (a / 32) * 2 * Math.PI;
-    const p = bloch3D(Math.cos(ang), Math.sin(ang), 0);
-    eqPts.push(`${p.sx.toFixed(3)},${p.sy.toFixed(3)}`);
-  }
-  const eqPath = 'M ' + eqPts.join(' L ') + ' Z';
-
-  // XZ-plane meridian (Y=0)
-  const mXZ = [];
-  for (let a = 0; a <= 32; a++) {
-    const ang = (a / 32) * 2 * Math.PI;
-    const p = bloch3D(Math.cos(ang), 0, Math.sin(ang));
-    mXZ.push(`${p.sx.toFixed(3)},${p.sy.toFixed(3)}`);
-  }
-  const mXZPath = 'M ' + mXZ.join(' L ') + ' Z';
-
-  // Vector tip
-  const tip = bloch3D(b.x, b.y, b.z);
-  const scale = 0.82; // scale to fit inside sphere
-  const tx = (tip.sx * scale).toFixed(3);
-  const ty = (tip.sy * scale).toFixed(3);
-
-  // Arrow direction for arrowhead
-  const ang2 = Math.atan2(parseFloat(ty), parseFloat(tx));
-  const ahl = 0.12;
-  const ahx = parseFloat(tx), ahy = parseFloat(ty);
-  const ah1x = (ahx - ahl * Math.cos(ang2 - 0.4)).toFixed(3);
-  const ah1y = (ahy - ahl * Math.sin(ang2 - 0.4)).toFixed(3);
-  const ah2x = (ahx - ahl * Math.cos(ang2 + 0.4)).toFixed(3);
-  const ah2y = (ahy - ahl * Math.sin(ang2 + 0.4)).toFixed(3);
+  const az = P(0, 0, 1), azb = P(0, 0, -1), ax = P(1, 0, 0), axn = P(-1, 0, 0), ay = P(0, 1, 0), ayn = P(0, -1, 0);
+  const sc = 0.92;
+  const [tx, ty] = P(b.x * sc, b.y * sc, b.z * sc);
+  const [px, py] = P(b.x * sc, b.y * sc, 0);
+  const ang = Math.atan2(ty, tx), al = 0.16;
+  const a1x = (tx - al * Math.cos(ang - 0.42)).toFixed(3), a1y = (ty - al * Math.sin(ang - 0.42)).toFixed(3);
+  const a2x = (tx - al * Math.cos(ang + 0.42)).toFixed(3), a2y = (ty - al * Math.sin(ang + 0.42)).toFixed(3);
+  const gid = `bg${idx}`;
 
   svg.innerHTML = `
     <defs>
-      <radialGradient id="${gradId}" cx="35%" cy="30%" r="65%">
-        <stop offset="0%" stop-color="rgba(255,255,255,0.06)"/>
-        <stop offset="60%" stop-color="${gradOuter}"/>
-        <stop offset="100%" stop-color="${gradInner}"/>
+      <radialGradient id="${gid}" cx="38%" cy="30%" r="75%">
+        <stop offset="0%" stop-color="rgba(255,255,255,0.12)"/>
+        <stop offset="45%" stop-color="rgba(56,189,248,0.05)"/>
+        <stop offset="100%" stop-color="rgba(10,16,28,0.6)"/>
       </radialGradient>
     </defs>
-
-    <!-- Sphere body -->
-    <circle cx="0" cy="0" r="1" fill="url(#${gradId})" stroke="rgba(0,200,255,0.22)" stroke-width="0.035"/>
-    <!-- Subtle highlight arc (top-left) -->
-    <ellipse cx="-0.22" cy="-0.28" rx="0.32" ry="0.18" fill="rgba(255,255,255,0.035)" transform="rotate(-30,-0.22,-0.28)"/>
-
-    <!-- Equatorial ring -->
-    <path d="${eqPath}" fill="none" stroke="rgba(0,200,255,0.18)" stroke-width="0.025" stroke-dasharray="0.06,0.04"/>
-
-    <!-- XZ meridian (back half dashed) -->
-    <path d="${mXZPath}" fill="none" stroke="rgba(100,180,255,0.10)" stroke-width="0.018" stroke-dasharray="0.05,0.06"/>
-
-    <!-- Z axis -->
-    <line x1="${axZ_bot.sx.toFixed(3)}" y1="${axZ_bot.sy.toFixed(3)}" x2="${axZ_top.sx.toFixed(3)}" y2="${axZ_top.sy.toFixed(3)}" stroke="rgba(0,200,255,0.30)" stroke-width="0.028"/>
-    <!-- X axis -->
-    <line x1="${axX_neg.sx.toFixed(3)}" y1="${axX_neg.sy.toFixed(3)}" x2="${axX_pos.sx.toFixed(3)}" y2="${axX_pos.sy.toFixed(3)}" stroke="rgba(255,80,80,0.22)" stroke-width="0.020"/>
-    <!-- Y axis -->
-    <line x1="${axY_neg.sx.toFixed(3)}" y1="${axY_neg.sy.toFixed(3)}" x2="${axY_pos.sx.toFixed(3)}" y2="${axY_pos.sy.toFixed(3)}" stroke="rgba(80,220,130,0.22)" stroke-width="0.020"/>
-
-    <!-- Axis labels -->
-    <text x="${(axZ_top.sx+0.06).toFixed(3)}" y="${(axZ_top.sy-0.04).toFixed(3)}" font-size="0.14" fill="rgba(0,200,255,0.65)" font-family="monospace" font-weight="bold">|0⟩</text>
-    <text x="${(axZ_bot.sx+0.06).toFixed(3)}" y="${(axZ_bot.sy+0.18).toFixed(3)}" font-size="0.14" fill="rgba(167,139,250,0.65)" font-family="monospace" font-weight="bold">|1⟩</text>
-    <text x="${(axX_pos.sx+0.04).toFixed(3)}" y="${(axX_pos.sy+0.05).toFixed(3)}" font-size="0.12" fill="rgba(255,80,80,0.55)" font-family="monospace">x</text>
-    <text x="${(axY_pos.sx+0.04).toFixed(3)}" y="${(axY_pos.sy+0.05).toFixed(3)}" font-size="0.12" fill="rgba(80,220,130,0.55)" font-family="monospace">y</text>
-
-    <!-- Origin dot -->
-    <circle cx="0" cy="0" r="0.032" fill="rgba(255,255,255,0.4)"/>
-
-    <!-- State vector shadow (glow trail) -->
-    <line x1="0" y1="0" x2="${tx}" y2="${ty}" stroke="${vecColor}" stroke-width="0.095" stroke-opacity="0.18" stroke-linecap="round"/>
-
-    <!-- State vector -->
-    <line x1="0" y1="0" x2="${tx}" y2="${ty}" stroke="${vecColor}" stroke-width="0.05" stroke-linecap="round"/>
-
-    <!-- Arrowhead -->
-    <polygon points="${tx},${ty} ${ah1x},${ah1y} ${ah2x},${ah2y}" fill="${vecColor}" opacity="0.95"/>
-
-    <!-- Vector tip dot -->
-    <circle cx="${tx}" cy="${ty}" r="0.065" fill="${vecColor}" opacity="1"/>
-    <circle cx="${tx}" cy="${ty}" r="0.03"  fill="rgba(255,255,255,0.8)"/>
+    <ellipse cx="0" cy="1.08" rx="0.72" ry="0.11" fill="rgba(0,0,0,0.35)"/>
+    <circle cx="0" cy="0" r="1" fill="url(#${gid})" stroke="rgba(148,163,184,0.30)" stroke-width="0.02"/>
+    ${[-0.6, -0.3, 0.3, 0.6].map(z => `<polyline points="${ringPts(z)}" fill="none" stroke="rgba(148,163,184,0.10)" stroke-width="0.011"/>`).join('')}
+    <polyline points="${ringPts(0)}" fill="none" stroke="rgba(56,189,248,0.32)" stroke-width="0.02" stroke-dasharray="0.05,0.04"/>
+    <polyline points="${meridianPts('xz')}" fill="none" stroke="rgba(148,163,184,0.10)" stroke-width="0.011"/>
+    <polyline points="${meridianPts('yz')}" fill="none" stroke="rgba(148,163,184,0.10)" stroke-width="0.011"/>
+    <line x1="${axn[0].toFixed(3)}" y1="${axn[1].toFixed(3)}" x2="${ax[0].toFixed(3)}" y2="${ax[1].toFixed(3)}" stroke="rgba(248,113,113,0.40)" stroke-width="0.015"/>
+    <line x1="${ayn[0].toFixed(3)}" y1="${ayn[1].toFixed(3)}" x2="${ay[0].toFixed(3)}" y2="${ay[1].toFixed(3)}" stroke="rgba(52,211,153,0.40)" stroke-width="0.015"/>
+    <line x1="${azb[0].toFixed(3)}" y1="${azb[1].toFixed(3)}" x2="${az[0].toFixed(3)}" y2="${az[1].toFixed(3)}" stroke="rgba(56,189,248,0.45)" stroke-width="0.017"/>
+    <text x="${(az[0] + 0.05).toFixed(3)}" y="${(az[1] - 0.04).toFixed(3)}" font-size="0.15" fill="rgba(56,189,248,0.85)" font-family="monospace" font-weight="bold">|0⟩</text>
+    <text x="${(azb[0] + 0.05).toFixed(3)}" y="${(azb[1] + 0.2).toFixed(3)}" font-size="0.15" fill="rgba(129,140,248,0.85)" font-family="monospace" font-weight="bold">|1⟩</text>
+    <text x="${(ax[0] + 0.05).toFixed(3)}" y="${(ax[1] + 0.06).toFixed(3)}" font-size="0.12" fill="rgba(248,113,113,0.7)" font-family="monospace">x</text>
+    <text x="${(ay[0] + 0.05).toFixed(3)}" y="${(ay[1] + 0.06).toFixed(3)}" font-size="0.12" fill="rgba(52,211,153,0.7)" font-family="monospace">y</text>
+    <circle cx="0" cy="0" r="0.03" fill="rgba(255,255,255,0.5)"/>
+    <line x1="${tx.toFixed(3)}" y1="${ty.toFixed(3)}" x2="${px.toFixed(3)}" y2="${py.toFixed(3)}" stroke="${col}" stroke-width="0.013" stroke-dasharray="0.04,0.04" opacity="0.5"/>
+    <line x1="0" y1="0" x2="${px.toFixed(3)}" y2="${py.toFixed(3)}" stroke="${col}" stroke-width="0.011" stroke-dasharray="0.03,0.04" opacity="0.32"/>
+    <line x1="0" y1="0" x2="${tx.toFixed(3)}" y2="${ty.toFixed(3)}" stroke="${col}" stroke-width="0.11" opacity="0.16" stroke-linecap="round"/>
+    <line x1="0" y1="0" x2="${tx.toFixed(3)}" y2="${ty.toFixed(3)}" stroke="${col}" stroke-width="0.045" stroke-linecap="round"/>
+    <polygon points="${tx.toFixed(3)},${ty.toFixed(3)} ${a1x},${a1y} ${a2x},${a2y}" fill="${col}"/>
+    <circle cx="${tx.toFixed(3)}" cy="${ty.toFixed(3)}" r="0.07" fill="${col}"/>
+    <circle cx="${tx.toFixed(3)}" cy="${ty.toFixed(3)}" r="0.03" fill="rgba(255,255,255,0.9)"/>
   `;
 
   if (prob) {
-    prob.textContent = measured
-      ? `|${q.measured}⟩`
-      : (p1 > 0.98 ? '|1⟩' : p1 < 0.02 ? '|0⟩' : `${(p1 * 100).toFixed(0)}%`);
+    prob.textContent = measured ? `medido |${q.measured}⟩`
+      : (p1 > 0.985 ? '|1⟩' : p1 < 0.015 ? '|0⟩' : `${(p1 * 100).toFixed(0)}% |1⟩`);
   }
 }
 
@@ -1244,20 +1197,13 @@ function drawBlochVector(b, measured, p1) {
     <circle cx="${tipX.toFixed(3)}" cy="${tipY.toFixed(3)}" r="0.07" fill="${color}" opacity="0.9"/>`;
 }
 
-document.getElementById('bloch-size-toggle').addEventListener('click', () => {
-  blochCompact = !blochCompact;
-  const grid = document.getElementById('bloch-grid');
-  const btn = document.getElementById('bloch-size-toggle');
-  if (blochCompact) {
-    grid.classList.add('compact'); grid.classList.remove('large');
-    btn.textContent = '⊞ Normal';
-    document.querySelectorAll('.bloch-sphere-svg').forEach(s => { s.style.width = ''; });
-  } else {
-    grid.classList.remove('compact'); grid.classList.remove('large');
-    btn.textContent = '⊞ Compacto';
-    document.querySelectorAll('.bloch-sphere-svg').forEach(s => { s.style.width = ''; });
-  }
-});
+let blochSize = 138;
+function applyBlochSize() {
+  const g = document.getElementById('bloch-grid');
+  if (g) g.style.setProperty('--bloch-size', blochSize + 'px');
+}
+document.getElementById('bloch-size-up').addEventListener('click', () => { blochSize = Math.min(blochSize + 22, 240); applyBlochSize(); });
+document.getElementById('bloch-size-down').addEventListener('click', () => { blochSize = Math.max(blochSize - 22, 84); applyBlochSize(); });
 
 // ─── Probability Chart ───────────────────────────────────────────────────────
 
@@ -1354,21 +1300,80 @@ function renderEntanglement() {
 
 // ─── Circuit ─────────────────────────────────────────────────────────────────
 
-function renderCircuit() {
-  const display = document.getElementById('circuit-display');
-  const ops = (state.circuit||[]).slice(-20).reverse();
-  display.innerHTML = ops.map(op=>{
-    const isMeasure=op.gate==='MEASURE';
-    const t=new Date().toLocaleTimeString('es',{hour12:false});
-    const qStr=op.qubits?op.qubits.map(q=>`q${q}`).join(','):'';
-    const paramStr=(op.params&&op.params.length)?` (${op.params.map(p=>p.toFixed(2)).join(',')})` :'';
-    const result=op.result!==undefined?` → |${op.result}⟩`:'';
-    return `<div class="circuit-op ${isMeasure?'measure':''}">
-      <span class="circuit-gate">${op.gate}${paramStr}</span>
-      <span class="circuit-qubits">[${qStr}]${result}</span>
-      <span class="circuit-time">${t}</span>
-    </div>`;
-  }).join('');
+function renderCircuitDiagram() {
+  const host = document.getElementById('circuit-diagram');
+  if (!host) return;
+  const n = state.n_qubits || 0;
+  const allOps = (state.circuit || []);
+  const ops = allOps.slice(-30);
+  if (!n) { host.innerHTML = ''; return; }
+  if (!ops.length) {
+    host.innerHTML = `<div class="circ-empty">Sin operaciones todavía. Aplica una puerta o ejecuta un algoritmo para ver el circuito.</div>`;
+    return;
+  }
+  const rowH = 30, colW = 38, padL = 36, padT = 12, padR = 14;
+  const cols = ops.length;
+  const W = padL + cols * colW + padR;
+  const H = padT * 2 + n * rowH;
+  const yOf = q => padT + q * rowH + rowH / 2;
+  const NS = 'http://www.w3.org/2000/svg';
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" class="circ-svg" xmlns="${NS}">`;
+
+  // wires + labels
+  for (let q = 0; q < n; q++) {
+    const y = yOf(q);
+    s += `<text x="8" y="${y + 3.5}" class="circ-wlabel">q${q}</text>`;
+    s += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" class="circ-wire"/>`;
+  }
+
+  const dot = (x, y, c) => `<circle cx="${x}" cy="${y}" r="4.2" fill="${c}"/>`;
+  const oplus = (x, y, c) => `<circle cx="${x}" cy="${y}" r="9" fill="none" stroke="${c}" stroke-width="1.6"/>
+     <line x1="${x-9}" y1="${y}" x2="${x+9}" y2="${y}" stroke="${c}" stroke-width="1.6"/>
+     <line x1="${x}" y1="${y-9}" x2="${x}" y2="${y+9}" stroke="${c}" stroke-width="1.6"/>`;
+  const xmark = (x, y, c) => `<line x1="${x-6}" y1="${y-6}" x2="${x+6}" y2="${y+6}" stroke="${c}" stroke-width="1.8"/>
+     <line x1="${x-6}" y1="${y+6}" x2="${x+6}" y2="${y-6}" stroke="${c}" stroke-width="1.8"/>`;
+  const box = (x, y, label, c) => {
+    const w = Math.max(22, 8 + label.length * 7.5);
+    return `<rect x="${x - w/2}" y="${y - 12}" width="${w}" height="24" rx="5" fill="rgba(56,189,248,0.10)" stroke="${c}" stroke-width="1.3"/>
+      <text x="${x}" y="${y + 4}" class="circ-glabel" fill="${c}">${escHtml(label)}</text>`;
+  };
+  const meter = (x, y, c) => `<rect x="${x-11}" y="${y-11}" width="22" height="22" rx="4" fill="rgba(251,191,36,0.10)" stroke="${c}" stroke-width="1.3"/>
+     <path d="M ${x-6} ${y+4} A 6 6 0 0 1 ${x+6} ${y+4}" fill="none" stroke="${c}" stroke-width="1.3"/>
+     <line x1="${x}" y1="${y+4}" x2="${x+5}" y2="${y-5}" stroke="${c}" stroke-width="1.3"/>`;
+
+  const C_1Q = '#7dd3fc', C_CTRL = '#34d399', C_PARAM = '#fbbf24', C_MEAS = '#fbbf24', C_MULTI = '#c7d2fe';
+
+  ops.forEach((op, ci) => {
+    const x = padL + ci * colW + colW / 2;
+    const g = (op.gate || '').toUpperCase();
+    const qs = op.qubits || [];
+    const ys = qs.map(yOf);
+    const link = (c) => qs.length > 1
+      ? `<line x1="${x}" y1="${Math.min(...ys)}" x2="${x}" y2="${Math.max(...ys)}" stroke="${c}" stroke-width="1.4" opacity="0.8"/>` : '';
+    const plabel = (op.params && op.params.length) ? `(${op.params.map(p => (+p).toFixed(2)).join(',')})` : '';
+
+    if (g === 'MEASURE') { s += meter(x, ys[0], C_MEAS); return; }
+    if (g === 'CNOT' || g === 'CX') { s += link(C_CTRL) + dot(x, yOf(qs[0]), C_CTRL) + oplus(x, yOf(qs[1]), C_CTRL); return; }
+    if (g === 'CZ') { s += link(C_CTRL) + dot(x, yOf(qs[0]), C_CTRL) + dot(x, yOf(qs[1]), C_CTRL); return; }
+    if (g === 'SWAP' || g === 'ISWAP') { s += link(C_MULTI) + xmark(x, yOf(qs[0]), C_MULTI) + xmark(x, yOf(qs[1]), C_MULTI); return; }
+    if (g === 'CCX' || g === 'TOFFOLI') { s += link(C_CTRL) + dot(x, yOf(qs[0]), C_CTRL) + dot(x, yOf(qs[1]), C_CTRL) + oplus(x, yOf(qs[2]), C_CTRL); return; }
+    if (g === 'CSWAP') { s += link(C_MULTI) + dot(x, yOf(qs[0]), C_CTRL) + xmark(x, yOf(qs[1]), C_MULTI) + xmark(x, yOf(qs[2]), C_MULTI); return; }
+    if (['CY','CH','CS','CT','CP','CRX','CRY','CRZ'].includes(g)) {
+      s += link(C_CTRL) + dot(x, yOf(qs[0]), C_CTRL) + box(x, yOf(qs[1]), g === 'CP' ? 'P' : g.slice(1), C_PARAM); return;
+    }
+    if (['RX','RY','RZ','P','PHASE','U3','RXX','RYY','RZZ'].includes(g)) {
+      s += link(C_PARAM);
+      qs.forEach(q => { s += box(x, yOf(q), g, C_PARAM); });
+      return;
+    }
+    // generic single-qubit gate(s)
+    s += link(C_1Q);
+    qs.forEach(q => { s += box(x, yOf(q), g, C_1Q); });
+  });
+
+  s += `</svg>`;
+  host.innerHTML = s;
+  host.scrollLeft = host.scrollWidth;
 }
 
 // ─── Gate Buttons ────────────────────────────────────────────────────────────
@@ -1565,11 +1570,14 @@ let entChart = null;
 
 function industryColor(industry) {
   const s = (industry || '').toLowerCase();
-  if (s.includes('financ') || s.includes('finanz')) return { c: '#10b981', glow: 'rgba(16,185,129,0.14)' };
-  if (s.includes('logíst') || s.includes('logist') || s.includes('red')) return { c: '#00c8ff', glow: 'rgba(0,200,255,0.14)' };
-  if (s.includes('ciber') || s.includes('segur')) return { c: '#f59e0b', glow: 'rgba(245,158,11,0.14)' };
-  if (s.includes('quím') || s.includes('quim') || s.includes('farma')) return { c: '#a78bfa', glow: 'rgba(124,58,237,0.16)' };
-  return { c: '#00c8ff', glow: 'rgba(0,200,255,0.14)' };
+  if (s.includes('financ') || s.includes('finanz') || s.includes('contab')) return { c: '#34d399', glow: 'rgba(52,211,153,0.14)' };
+  if (s.includes('logíst') || s.includes('logist') || s.includes('red')) return { c: '#38bdf8', glow: 'rgba(56,189,248,0.14)' };
+  if (s.includes('ciber') || s.includes('segur')) return { c: '#fbbf24', glow: 'rgba(251,191,36,0.14)' };
+  if (s.includes('quím') || s.includes('quim') || s.includes('farma')) return { c: '#a78bfa', glow: 'rgba(167,139,250,0.16)' };
+  if (s.includes('verific') || s.includes('ia') || s.includes('riesgo')) return { c: '#818cf8', glow: 'rgba(129,140,248,0.16)' };
+  if (s.includes('planif')) return { c: '#fbbf24', glow: 'rgba(251,191,36,0.14)' };
+  if (s.includes('operac')) return { c: '#2dd4bf', glow: 'rgba(45,212,191,0.14)' };
+  return { c: '#38bdf8', glow: 'rgba(56,189,248,0.14)' };
 }
 
 // Compact card for the left sidebar quick-access list
@@ -1592,31 +1600,6 @@ function renderEnterprise() {
       <span class="ent-card-go">›</span>`;
     card.addEventListener('click', () => openUsecaseForm(sol));
     list.appendChild(card);
-  });
-}
-
-// Large cards in the central workspace hub
-function renderUsecaseHub() {
-  const grid = document.getElementById('usecase-cards');
-  if (!grid) return;
-  grid.innerHTML = '';
-  enterpriseSolutions.forEach(sol => {
-    const col = industryColor(sol.industry);
-    const card = document.createElement('div');
-    card.className = 'uc-card';
-    card.style.setProperty('--ind-color', col.c);
-    card.innerHTML = `
-      <div class="uc-card-top">
-        <div class="uc-card-mono">${escHtml(sol.icon || '·')}</div>
-        <div>
-          <div class="uc-card-industry">${escHtml(sol.industry)}</div>
-          <div class="uc-card-name">${escHtml(sol.label)}</div>
-        </div>
-      </div>
-      <div class="uc-card-desc">${escHtml(sol.description || '')}</div>
-      <div class="uc-card-cta">Introducir datos →</div>`;
-    card.addEventListener('click', () => openUsecaseForm(sol));
-    grid.appendChild(card);
   });
 }
 
@@ -1751,6 +1734,9 @@ function openUsecaseForm(sol) {
   const schema = FORM_SCHEMAS[sol.name] || { intro: sol.description, fields: [] };
   const col = industryColor(sol.industry);
   const form = document.getElementById('usecase-form');
+  const modal = document.getElementById('usecase-form-modal');
+  modal.style.setProperty('--ind-color', col.c);
+  modal.style.setProperty('--ind-glow', col.glow);
   form.style.setProperty('--ind-color', col.c);
   form.innerHTML = `
     <div class="uf-head">
@@ -1782,12 +1768,11 @@ function openUsecaseForm(sol) {
   document.getElementById('uf-back').addEventListener('click', closeUsecaseForm);
   document.getElementById('uf-solve').addEventListener('click', () => {
     const params = collectParams(schema, form);
+    closeUsecaseForm();
     runEnterprise(sol, params);
   });
 
-  document.getElementById('usecase-cards').classList.add('hidden');
-  form.classList.remove('hidden');
-  document.querySelector('.main-area').scrollTo({ top: 0, behavior: 'smooth' });
+  document.getElementById('usecase-form-overlay').classList.remove('hidden');
 }
 
 function wireRowDelete(cont) {
@@ -1797,9 +1782,9 @@ function wireRowDelete(cont) {
 }
 
 function closeUsecaseForm() {
-  document.getElementById('usecase-form').classList.add('hidden');
-  document.getElementById('usecase-cards').classList.remove('hidden');
+  document.getElementById('usecase-form-overlay').classList.add('hidden');
 }
+document.getElementById('usecase-form-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden'); });
 
 function collectParams(schema, root) {
   const p = {};
@@ -2176,6 +2161,30 @@ document.getElementById('qasm-download').addEventListener('click', ()=>{
   log('Circuito descargado (omega_circuit.qasm)','ok');
 });
 
+// ─── PennyLane circuit ────────────────────────────────────────────────────────
+
+document.getElementById('btn-pennylane').addEventListener('click', async () => {
+  log('Reconstruyendo circuito con PennyLane...', 'info');
+  try {
+    const data = await api('GET', '/api/pennylane');
+    const code = document.getElementById('pennylane-code');
+    const sub = document.getElementById('pennylane-sub');
+    if (!data.available) {
+      code.textContent = data.note || 'PennyLane no disponible.';
+      sub.textContent = 'Backend opcional no instalado';
+    } else if (!data.drawing) {
+      code.textContent = data.note || 'El circuito está vacío. Aplica puertas o ejecuta un algoritmo.';
+      sub.textContent = `${data.ops || 0} operaciones`;
+    } else {
+      code.textContent = data.drawing;
+      sub.textContent = `${data.n_qubits} qubits · ${data.ops} operaciones · fidelidad con el motor ${(data.fidelity * 100).toFixed(2)}%`;
+    }
+    document.getElementById('pennylane-overlay').classList.remove('hidden');
+  } catch (e) { log('Error PennyLane: ' + e.message, 'err'); }
+});
+document.getElementById('pennylane-close').addEventListener('click', () => document.getElementById('pennylane-overlay').classList.add('hidden'));
+document.getElementById('pennylane-overlay').addEventListener('click', e => { if (e.target === e.currentTarget) e.currentTarget.classList.add('hidden'); });
+
 // ─── Noise Control ────────────────────────────────────────────────────────────
 
 let _noiseTimer = null;
@@ -2236,7 +2245,6 @@ async function init() {
   try {
     enterpriseSolutions = await apiFetch(API_BASE+'/api/enterprise/list').then(r=>r.json());
     renderEnterprise();
-    renderUsecaseHub();
     log(enterpriseSolutions.length+' casos de uso cargados','ok');
   } catch(e) {}
   log('Conectando a '+WS_URL+'...','info');

@@ -400,6 +400,9 @@ class QuantumState:
 
     def to_qasm(self) -> str:
         """Export the executed circuit as OpenQASM 2.0 (runs on Qiskit / real hardware)."""
+        return self._qasm_lines()
+
+    def _qasm_lines(self) -> str:
         qasm_map = {
             "I": "id", "H": "h", "X": "x", "Y": "y", "Z": "z", "S": "s", "T": "t",
             "SDG": "sdg", "TDG": "tdg", "SX": "sx", "RX": "rx", "RY": "ry", "RZ": "rz",
@@ -425,6 +428,67 @@ class QuantumState:
             qstr = ",".join(f"q[{q}]" for q in qs)
             lines.append(f"{name}{pstr} {qstr};")
         return "\n".join(lines)
+
+    def pennylane_draw(self) -> Dict:
+        """Rebuild the circuit in PennyLane and return its text drawing + state fidelity.
+        Optional: returns available=False if PennyLane is not installed."""
+        try:
+            import pennylane as qml
+        except Exception:
+            return {"available": False, "drawing": "",
+                    "note": "PennyLane no está instalado. Instálalo con: pip install pennylane"}
+
+        ops = [o for o in self.circuit_ops if str(o.get("gate", "")).upper() != "MEASURE"]
+        n = self.n_qubits
+        gate_fns = {
+            "H": qml.Hadamard, "X": qml.PauliX, "Y": qml.PauliY, "Z": qml.PauliZ,
+            "S": qml.S, "T": qml.T, "SX": qml.SX,
+        }
+        rot_fns = {"RX": qml.RX, "RY": qml.RY, "RZ": qml.RZ, "P": qml.PhaseShift, "PHASE": qml.PhaseShift}
+        ctrl2 = {"CNOT": qml.CNOT, "CX": qml.CNOT, "CZ": qml.CZ, "CY": qml.CY, "SWAP": qml.SWAP}
+        crot = {"CRX": qml.CRX, "CRY": qml.CRY, "CRZ": qml.CRZ}
+        ising = {"RXX": qml.IsingXX, "RYY": qml.IsingYY, "RZZ": qml.IsingZZ}
+
+        dev = qml.device("default.qubit", wires=n)
+
+        def build():
+            for o in ops:
+                g = str(o.get("gate", "")).upper()
+                w = o.get("qubits", []); p = o.get("params", []) or []
+                try:
+                    if g in gate_fns: gate_fns[g](wires=w[0])
+                    elif g in rot_fns: rot_fns[g](p[0], wires=w[0])
+                    elif g == "U3": qml.U3(p[0], p[1], p[2], wires=w[0])
+                    elif g in ctrl2: ctrl2[g](wires=[w[0], w[1]])
+                    elif g == "CP": qml.ControlledPhaseShift(p[0], wires=[w[0], w[1]])
+                    elif g in crot: crot[g](p[0], wires=[w[0], w[1]])
+                    elif g == "ISWAP": qml.ISWAP(wires=[w[0], w[1]])
+                    elif g in ising: ising[g](p[0], wires=[w[0], w[1]])
+                    elif g in ("CCX", "TOFFOLI"): qml.Toffoli(wires=[w[0], w[1], w[2]])
+                    elif g == "CSWAP": qml.CSWAP(wires=[w[0], w[1], w[2]])
+                except Exception:
+                    pass
+
+        @qml.qnode(dev)
+        def circuit():
+            build()
+            return qml.state()
+
+        try:
+            drawing = qml.draw(circuit, max_length=200)()
+            pl_state = np.asarray(circuit())
+            fidelity = float(abs(np.vdot(pl_state, self.state)) ** 2)
+        except Exception as e:
+            return {"available": True, "drawing": "", "note": f"PennyLane error: {e}", "ops": len(ops)}
+
+        return {
+            "available": True,
+            "drawing": drawing,
+            "ops": len(ops),
+            "n_qubits": n,
+            "fidelity": round(fidelity, 6),
+            "note": f"Circuito reconstruido y verificado con PennyLane (fidelidad con el motor: {fidelity*100:.2f}%).",
+        }
 
     # ─── Qubit add/remove ────────────────────────────────────────────────────
 
@@ -1489,6 +1553,135 @@ class QuantumState:
                 ],
                 "note": "Aplicación real: generación de claves bancarias, certificados TLS, semillas de loterías auditables y tokens de seguridad. ID Quantique y Quantinuum venden QRNG comercial certificado.",
                 "fidelity": 1.0,
+            }
+
+        # ── VERIFICACIÓN / PLANIFICACIÓN — Satisfacibilidad (Max-SAT) ─────────
+        elif name == "max_sat":
+            n = max(2, min(int(params.get("n_vars", 4)), N, 10))
+            clauses = params.get("clauses")
+            if not clauses:
+                clauses = [[1, -2, 3], [-1, 2], [2, 3, -4], [-3, 4], [1, 4]]
+            # normaliza: lista de listas de enteros con signo (1-based)
+            clauses = [[int(l) for l in cl if abs(int(l)) <= n and l != 0] for cl in clauses]
+            clauses = [cl for cl in clauses if cl]
+
+            def sat(x, cl):
+                return any((l > 0 and x[l - 1] == 1) or (l < 0 and x[-l - 1] == 0) for l in cl)
+
+            cost = np.array([sum(1 for cl in clauses if sat(self._bits_of(s, n), cl))
+                             for s in range(2 ** n)], dtype=float)
+            probs, _, _ = self._qaoa_solve(cost, n, maximize=True)
+            order = np.argsort(probs)[::-1][:10]
+            best_s = int(max(order, key=lambda s: cost[s]))
+            x = self._bits_of(best_s, n)
+            satisfied = int(cost[best_s]); total = len(clauses)
+
+            def clause_str(cl):
+                return " ∨ ".join((("¬" if l < 0 else "") + f"x{abs(l)}") for l in cl)
+            return {
+                "enterprise": True, "icon": "⊧", "industry": "Verificación / Planificación",
+                "solution": "Satisfacibilidad (Max-SAT)",
+                "summary": f"Encuentra la asignación de {n} variables booleanas que satisface el mayor número de restricciones. Base de la planificación, verificación de hardware y configuración de productos.",
+                "highlight": {"label": "Cláusulas satisfechas",
+                              "value": f"{satisfied} de {total}  ({satisfied/max(total,1)*100:.0f}%)"},
+                "kpis": [
+                    {"label": "Variables", "value": str(n)},
+                    {"label": "Restricciones", "value": str(total)},
+                    {"label": "Satisfechas", "value": f"{satisfied}/{total}"},
+                    {"label": "Resultado", "value": ("SATISFACIBLE" if satisfied == total else "Máx. parcial")},
+                ],
+                "rows": [{"label": f"x{i+1}", "value": ("VERDADERO" if x[i] else "falso"),
+                          "tag": "1" if x[i] else ""} for i in range(n)],
+                "note": "Aplicación real: planificación de horarios, verificación de circuitos, dependencias de software y configuradores de producto.",
+                "fidelity": round(satisfied / max(total, 1), 4),
+            }
+
+        # ── FINANZAS / CONTABILIDAD — Cuadre de Objetivo (Subset Sum) ─────────
+        elif name == "subset_sum":
+            nums = params.get("numbers")
+            if not nums:
+                nums = [120, 75, 40, 200, 65, 95]
+            nums = [float(v) for v in nums]
+            n = len(nums)
+            if n > min(N, 12):
+                n = min(N, 12); nums = nums[:n]
+            target = float(params.get("target", sum(nums) * 0.5))
+            cost = np.array([-abs(sum(nums[i] * self._bits_of(s, n)[i] for i in range(n)) - target)
+                             for s in range(2 ** n)], dtype=float)
+            probs, _, _ = self._qaoa_solve(cost, n, maximize=True)
+            order = np.argsort(probs)[::-1][:12]
+            best_s = int(max(order, key=lambda s: cost[s]))
+            x = self._bits_of(best_s, n)
+            chosen = [nums[i] for i in range(n) if x[i]]
+            achieved = sum(chosen); diff = abs(achieved - target)
+            return {
+                "enterprise": True, "icon": "Σ", "industry": "Finanzas / Contabilidad",
+                "solution": "Cuadre de Objetivo (Subset Sum)",
+                "summary": f"Selecciona el subconjunto de {n} importes cuya suma se acerca más a un objetivo — útil para cuadrar facturas, asignar pagos o equilibrar cargas.",
+                "highlight": {"label": "Suma alcanzada",
+                              "value": f"{achieved:g}  (objetivo {target:g}, diferencia {diff:g})"},
+                "kpis": [
+                    {"label": "Objetivo", "value": f"{target:g}"},
+                    {"label": "Suma obtenida", "value": f"{achieved:g}"},
+                    {"label": "Diferencia", "value": f"{diff:g}"},
+                    {"label": "Elementos", "value": f"{len(chosen)} / {n}"},
+                ],
+                "rows": [{"label": f"Importe {i+1}", "value": f"{nums[i]:g}",
+                          "tag": "SUMADO" if x[i] else ""} for i in range(n)],
+                "note": "Aplicación real: conciliación contable, cuadre de caja, asignación de pagos a facturas y reparto equitativo de recursos.",
+                "fidelity": round(1.0 / (1.0 + diff), 4),
+            }
+
+        # ── PLANIFICACIÓN / TELECOM — Coloreado de Grafos (QUBO one-hot) ──────
+        elif name == "graph_coloring":
+            n = max(2, min(int(params.get("n", 4)), 6))
+            colors = max(2, min(int(params.get("colors", 3)), 4))
+            user_edges = params.get("edges")
+            if user_edges:
+                edges = [(int(e[0]), int(e[1])) for e in user_edges
+                         if 0 <= int(e[0]) < n and 0 <= int(e[1]) < n and int(e[0]) != int(e[1])]
+            else:
+                edges = [(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)]
+            nbits = n * colors
+            if nbits > N:
+                self._ensure_qubits(nbits); N = self.n_qubits
+            P = 4.0
+            cost = np.zeros(2 ** nbits)
+            for s in range(2 ** nbits):
+                x = self._bits_of(s, nbits)
+                node_pen = sum((sum(x[v * colors + c] for c in range(colors)) - 1) ** 2 for v in range(n))
+                edge_pen = sum(x[i * colors + c] * x[j * colors + c] for (i, j) in edges for c in range(colors))
+                cost[s] = P * node_pen + P * edge_pen
+            probs, _, _ = self._qaoa_solve(cost, nbits, maximize=False)
+            order = np.argsort(probs)[::-1][:14]
+            best_s = int(min(order, key=lambda s: cost[s]))
+            x = self._bits_of(best_s, nbits)
+            palette = ["Color A", "Color B", "Color C", "Color D"]
+            node_color = []
+            for v in range(n):
+                cs = [c for c in range(colors) if x[v * colors + c]]
+                node_color.append(cs[0] if len(cs) == 1 else None)
+            conflicts = sum(1 for (i, j) in edges
+                            if node_color[i] is not None and node_color[i] == node_color[j])
+            valid = all(c is not None for c in node_color) and conflicts == 0
+            used = len(set(c for c in node_color if c is not None))
+            return {
+                "enterprise": True, "icon": "◑", "industry": "Planificación / Telecom",
+                "solution": "Coloreado de Grafos",
+                "summary": f"Asigna uno de {colors} recursos (colores, frecuencias, franjas horarias) a {n} elementos de forma que elementos conectados nunca compartan recurso.",
+                "highlight": {"label": "Asignación",
+                              "value": ("válida sin conflictos" if valid else f"{conflicts} conflicto(s) — prueba más colores")},
+                "kpis": [
+                    {"label": "Elementos", "value": str(n)},
+                    {"label": "Recursos disponibles", "value": str(colors)},
+                    {"label": "Recursos usados", "value": str(used)},
+                    {"label": "Conflictos", "value": str(conflicts)},
+                ],
+                "rows": [{"label": f"Nodo {v}",
+                          "value": (palette[node_color[v]] if node_color[v] is not None else "sin asignar"),
+                          "tag": "OK" if node_color[v] is not None else ""} for v in range(n)],
+                "note": "Aplicación real: asignación de frecuencias en redes móviles, horarios de exámenes, asignación de registros en compiladores y planificación de turnos.",
+                "fidelity": 1.0 if valid else round(max(0.0, 1.0 - conflicts / max(len(edges), 1)), 4),
             }
 
         return {"error": f"Solución empresarial desconocida: {name}"}

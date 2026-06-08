@@ -294,6 +294,11 @@ async def export_qasm(username: str = Depends(require_auth)):
     """Export the executed circuit as OpenQASM 2.0."""
     return {"qasm": qc.to_qasm(), "n_qubits": qc.n_qubits, "depth": len(qc.circuit_ops)}
 
+@app.get("/api/pennylane")
+async def pennylane_circuit(username: str = Depends(require_auth)):
+    """Rebuild and verify the current circuit with PennyLane (text drawing + fidelity)."""
+    return qc.pennylane_draw()
+
 @app.post("/api/reset")
 async def reset_state(username: str = Depends(require_auth)):
     qc.reset()
@@ -335,6 +340,9 @@ async def list_enterprise(username: str = Depends(require_auth)):
         {"name": "maxcut",          "label": "Optimización de Red",      "industry": "Logística",       "icon": "⋈",  "description": "Particiona redes y rutas según tus conexiones"},
         {"name": "grover_search",   "label": "Búsqueda en Datos",        "industry": "Datos",           "icon": "⌕",  "description": "Encuentra un registro en datos sin índice (Grover)"},
         {"name": "swap_similarity", "label": "Similitud / Fraude",       "industry": "IA y Riesgo",     "icon": "≈",  "description": "Compara dos perfiles para fraude o recomendación"},
+        {"name": "max_sat",         "label": "Satisfacibilidad (Max-SAT)","industry": "Verificación",   "icon": "⊧",  "description": "Cumple el máximo de restricciones booleanas"},
+        {"name": "subset_sum",      "label": "Cuadre de Objetivo",       "industry": "Contabilidad",    "icon": "Σ",  "description": "Selecciona importes que cuadran con un objetivo"},
+        {"name": "graph_coloring",  "label": "Coloreado de Grafos",      "industry": "Planificación",   "icon": "◑",  "description": "Asigna recursos sin conflictos (horarios, frecuencias)"},
         {"name": "bb84",            "label": "Clave Cuántica (BB84)",    "industry": "Ciberseguridad",  "icon": "K",  "description": "Comunicación inviolable con detección de espías"},
         {"name": "qrng",            "label": "Claves Aleatorias (QRNG)", "industry": "Ciberseguridad",  "icon": "#",  "description": "Genera claves AES-256 verdaderamente aleatorias"},
         {"name": "vqe_h2",          "label": "Simulación Molecular",     "industry": "Química / Farma", "icon": "H₂", "description": "Energía molecular del H₂ a tu distancia de enlace (VQE)"},

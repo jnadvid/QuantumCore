@@ -186,19 +186,6 @@
     <!-- MAIN AREA -->
     <main class="main-area">
 
-      <!-- USE-CASE WORKSPACE / HUB -->
-      <section class="panel usecase-hub" id="usecase-hub">
-        <div class="hub-banner">
-          <div class="hub-banner-text">
-            <h2 class="hub-title">Casos de uso</h2>
-            <p class="hub-sub">Selecciona un caso, introduce tus datos y ejecuta el cálculo.</p>
-          </div>
-          <div class="hub-badge"><span id="hub-qubits">—</span> qubits</div>
-        </div>
-        <div id="usecase-cards" class="usecase-cards"></div>
-        <div id="usecase-form" class="usecase-form hidden"></div>
-      </section>
-
       <!-- Algorithm Info Panel (hidden by default) -->
       <section class="panel algo-info-panel hidden" id="algo-info-panel">
         <div class="algo-info-header">
@@ -241,18 +228,31 @@
         </div>
       </section>
 
-      <!-- Bloch Sphere Panel — ALL qubits -->
-      <section class="panel main-panel">
+      <!-- Bloch Sphere Panel — ALL qubits (centerpiece) -->
+      <section class="panel main-panel bloch-panel">
         <div class="panel-header">
-          <h3 class="panel-title">Esferas de Bloch — Todos los Qubits</h3>
+          <h3 class="panel-title">Esferas de Bloch</h3>
           <div class="bloch-controls">
-            <button class="btn btn-sm btn-ghost" id="bloch-size-toggle" title="Cambiar tamaño">⊞ Compacto</button>
-            <span class="panel-sub" id="bloch-sub">mostrando <span id="bloch-count">0</span> qubits</span>
+            <button class="btn btn-sm btn-ghost" id="bloch-size-down" title="Reducir">−</button>
+            <button class="btn btn-sm btn-ghost" id="bloch-size-up" title="Ampliar">+</button>
+            <span class="panel-sub" id="bloch-sub"><span id="bloch-count">0</span> qubits</span>
           </div>
         </div>
         <div id="bloch-scroll" class="bloch-scroll">
           <div id="bloch-grid" class="bloch-grid"></div>
         </div>
+      </section>
+
+      <!-- Quantum Circuit Diagram -->
+      <section class="panel main-panel">
+        <div class="panel-header">
+          <h3 class="panel-title">Circuito Cuántico</h3>
+          <div class="bloch-controls">
+            <button class="btn btn-sm btn-ghost" id="btn-pennylane" title="Reconstruir y verificar con PennyLane">PennyLane</button>
+            <button class="btn btn-sm btn-ghost" id="btn-clear-circuit">Limpiar</button>
+          </div>
+        </div>
+        <div id="circuit-diagram" class="circuit-diagram"></div>
       </section>
 
       <!-- Probability Chart -->
@@ -264,15 +264,6 @@
         <div class="chart-wrap">
           <canvas id="prob-chart"></canvas>
         </div>
-      </section>
-
-      <!-- Circuit Log -->
-      <section class="panel main-panel">
-        <div class="panel-header">
-          <h3 class="panel-title">Circuito Cuántico</h3>
-          <button class="btn btn-sm btn-ghost" id="btn-clear-circuit">Limpiar</button>
-        </div>
-        <div id="circuit-display" class="circuit-display"></div>
       </section>
 
     </main>
@@ -343,6 +334,30 @@
         <button class="btn btn-ghost btn-sm" id="algo-result-close">✕</button>
       </div>
       <div id="algo-result-body" class="algo-result-body"></div>
+    </div>
+  </div>
+
+  <!-- USE-CASE INPUT FORM MODAL -->
+  <div id="usecase-form-overlay" class="modal-overlay hidden">
+    <div class="modal modal-enterprise" id="usecase-form-modal">
+      <div id="usecase-form"></div>
+    </div>
+  </div>
+
+  <!-- PENNYLANE CIRCUIT MODAL -->
+  <div id="pennylane-overlay" class="modal-overlay hidden">
+    <div class="modal modal-algo-result">
+      <div class="modal-title algo-result-title">
+        <span style="color:var(--accent2)">⎯</span>
+        <div>
+          <div>Circuito reconstruido con PennyLane</div>
+          <div id="pennylane-sub" style="font-size:11px;color:var(--text-dim);font-weight:400"></div>
+        </div>
+        <button class="btn btn-ghost btn-sm" id="pennylane-close">✕</button>
+      </div>
+      <div class="algo-result-body">
+        <pre id="pennylane-code" class="qasm-code"></pre>
+      </div>
     </div>
   </div>
 
